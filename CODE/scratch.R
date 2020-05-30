@@ -4,12 +4,44 @@ suppressMessages(suppressWarnings(library(survey)))
 set.seed(123)
 
 urlRemote_path  <- "https://raw.githubusercontent.com/"
-Github_path <- "DSHerzberg/RATING-SCALE-ANALYSIS/master/INPUT-FILES/"
-fileName_path   <- "data-input-sim.csv"
+Github_path <- "DSHerzberg/WEIGHTING-DATA/master/INPUT-FILES/"
+fileName_path   <- "unweighted-input.csv"
 
 unweighted_input <- suppressMessages(read_csv(url(
   str_c(urlRemote_path, Github_path, fileName_path)
 )))
+
+var_order <- c("age", "age_range", "gender", "educ", "ethnic", "region", "clin_status")
+
+cat_order <- c(
+  # age
+  NA, "5", "6", "7", "8", "9", "10", "11", "12",
+  # age_range
+  NA, "5 to 8 yo", "9 to 12 yo", 
+  # Gender
+  NA, "male", "female",
+  # educ
+  NA, "no_HS", "HS_grad", "some_college", "BA_plus",
+  # Ethnicity
+  NA, "hispanic", "asian", "black", "white", "other",
+  # Region
+  NA, "northeast", "midwest", "south", "west")
+
+
+freq_demos_unweighted <- unweighted_input %>%
+  pivot_longer(age_range:clin_status, names_to = 'var', values_to = 'cat') %>%
+  group_by(var, cat) %>%
+  count(var, cat) %>%
+  arrange(match(var, var_order), match(cat, cat_order)) %>%
+  ungroup() %>%
+  mutate(
+   pct_samp = round(((n / nrow(unweighted_input)) * 100), 1)
+  ) %>%
+  select(var, cat, n, pct_samp)
+
+
+
+
 
 
 
