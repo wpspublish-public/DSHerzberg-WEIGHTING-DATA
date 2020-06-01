@@ -54,20 +54,17 @@ ethnic_census <- tibble(ethnic = c("hispanic", "asian", "black", "white", "other
 region_census <- tibble(region = c("northeast", "south", "midwest", "west"), 
                         Freq = nrow(unweighted_input)*c(0.166, 0.383, 0.212, 0.238))
 
-
-
-
-
-
-
-dummy_gender_rake <- rake(design = dummy_survey_unweighted,
-                          sample.margins = list(~gender, ~region),
-                          population.margins = list(gender_dist, region_dist))
+# rake input data to create case-wise weights
+rake_unweighted_input <- rake(design = unweighted_survey_object,
+                          sample.margins = list(~gender, ~educ, ~ethnic, ~region),
+                          population.margins = list(gender_census, educ_census, 
+                                                    ethnic_census, region_census))
 
 # bind gender weights to original data
-dummy_data_gender_region_wts <- bind_cols(
-  dummy_gender_rake[["variables"]], 
-  data.frame(dummy_gender_rake[["prob"]])
+input_demo_wts <- bind_cols(
+  rake_unweighted_input[["variables"]], 
+  data.frame(rake_unweighted_input[["prob"]])
   ) %>% 
-  rename(gender_region_wt = dummy_gender_rake...prob...)
+  rename(demo_wt = rake_unweighted_input...prob...) %>% 
+  select(ID:clin_status, demo_wt, everything())
 
