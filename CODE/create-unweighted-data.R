@@ -9,6 +9,14 @@ unweighted_input <-
   rename_all(~ str_c("i", str_pad(
     as.character(1:50), 2, side = "left", pad = "0"
   ))) %>%
+  mutate_at(vars(contains("i")), 
+            ~ case_when(
+              .x == 0 ~ 1,
+              .x == 1 ~ 2,
+              .x == 2 ~ 3,
+              .x == 3 ~ 4
+            )
+  ) %>%
   mutate(
     ID = 100001:101000,
     age = sample(c(5:12), 1000, replace = TRUE),

@@ -25,9 +25,26 @@ cat_order <- c(
   # Ethnicity
   NA, "hispanic", "asian", "black", "white", "other",
   # Region
-  NA, "northeast", "midwest", "south", "west")
+  NA, "northeast", "south", "midwest", "west")
 
-
+# create census percentages
+# gender_census <- tibble(gender = c("female", "male"),
+#                         Freq = nrow(unweighted_input)*c(0.53, 0.47))
+# educ_census <- tibble(educ = c("no_HS", "HS_grad", "some_college", "BA_plus"),
+#                       Freq = nrow(unweighted_input)*c(0.119, 0.263, 0.306, 0.311))
+# ethnic_census <- tibble(ethnic = c("hispanic", "asian", "black", "white", "other"),
+#                         Freq = nrow(unweighted_input)*c(0.239, 0.048, 0.136, 0.521, .056))
+# region_census <- tibble(region = c("northeast", "south", "midwest", "west"),
+#                         Freq = nrow(unweighted_input)*c(0.166, 0.383, 0.212, 0.238))
+gender_census <- tibble(cat = c("female", "male"),
+                        Freq = nrow(unweighted_input)*c(0.53, 0.47))
+educ_census <- tibble(cat = c("no_HS", "HS_grad", "some_college", "BA_plus"),
+                      Freq = nrow(unweighted_input)*c(0.119, 0.263, 0.306, 0.311))
+ethnic_census <- tibble(cat = c("hispanic", "asian", "black", "white", "other"),
+                        Freq = nrow(unweighted_input)*c(0.239, 0.048, 0.136, 0.521, .056))
+region_census <- tibble(cat = c("northeast", "south", "midwest", "west"),
+                        Freq = nrow(unweighted_input)*c(0.166, 0.383, 0.212, 0.238))
+# get demo counts of unweighted input
 freq_demos_unweighted <- unweighted_input %>%
   pivot_longer(age_range:clin_status, names_to = 'var', values_to = 'cat') %>%
   group_by(var, cat) %>%
@@ -37,7 +54,24 @@ freq_demos_unweighted <- unweighted_input %>%
   mutate(
    pct_samp = round(((n / nrow(unweighted_input)) * 100), 1)
   ) %>%
-  select(var, cat, n, pct_samp)
+  select(var, cat, n, pct_samp) %>% 
+  full_join(region_census, by = "cat")
+
+list_demos <- list(freq_demos_unweighted, gender_census, educ_census, 
+                   ethnic_census, region_census)
+
+# bind census demos
+freq_demos_comp <- list_demos %>% 
+  reduce(left_join, by = "cat") %>% 
+  filter(!(var %in% c("age_range", "clin_status"))) %>% 
+  unite(census_count, c(Freq.x, Freq.y, Freq.x.x, Freq.y.y), sep = "", remove = T) %>% 
+  mutate_at(vars(census_count), ~as.integer(str_replace_all(., "NA", ""))) %>% 
+  mutate(census_pct = 100 * round(census_count/nrow(unweighted_input), 3),
+         diff_pct = census_pct - pct_samp
+         ) %>% 
+  rename(input_count = n, input_pct = pct_samp) %>% 
+  select(var, cat, input_count, census_count, input_pct, census_pct, diff_pct) %>% 
+  arrange(desc(diff_pct))
 
 # create survey objects that represent weights
 unweighted_survey_object <- svydesign(ids = ~1, 
@@ -60,11 +94,35 @@ rake_unweighted_input <- rake(design = unweighted_survey_object,
                           population.margins = list(gender_census, educ_census, 
                                                     ethnic_census, region_census))
 
-# bind gender weights to original data
+# bind demo weights to original data
 input_demo_wts <- bind_cols(
   rake_unweighted_input[["variables"]], 
   data.frame(rake_unweighted_input[["prob"]])
   ) %>% 
   rename(demo_wt = rake_unweighted_input...prob...) %>% 
-  select(ID:clin_status, demo_wt, everything())
+  select(ID:clin_status, demo_wt, everything()) %>% 
+  arrange(desc(demo_wt))
+
+# reality check, what demo cell is likely to have the weight that deviates farthest from 1?
+#  female, no_HS, hispanic, northeast
+# what demo cell is likely to have weight closest to one?
+# female, HS grad, asian, south
+
+case_high_wt <- input_demo_wts %>% 
+  filter(
+    gender == "female" &
+      educ == "no_HS" &
+      ethnic == "hispanic" &
+      region == "northeast"
+  ) %>% 
+  sample_n(1)
+
+case_1_wt <- input_demo_wts %>% 
+  filter(
+    gender == "female" &
+      educ == "HS_grad" &
+      ethnic == "asian" &
+      region == "south"
+  ) %>% 
+  sample_n(1)
 
