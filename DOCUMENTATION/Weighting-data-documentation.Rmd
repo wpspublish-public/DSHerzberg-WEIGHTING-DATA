@@ -1,5 +1,5 @@
 ---
-title: "Weighting survey data to adjust for demographically non-representative samples"
+title: "Weighting behavior rating data to adjust for demographically non-representative samples"
 output: html_document
 ---
 
@@ -33,7 +33,9 @@ At this point I have to pause and ask you to check my logic. Am I thinking about
 
 ### Work to date with Survey package
 
-First we read in a simulated data set that I created with the `psych` package.
+#### Read unweighted input data
+
+First we read in a simulated data set that I created with the `psych` package. The data set includes 1000 cases with the four demographic variables of interest, and 50 behavior ratings items coded as in the example above. (Note: if you are unable to read the data set from the remote URL, I can provide code that will enable you to create the data.)
 ```{r read-data, eval=FALSE}
 suppressMessages(suppressWarnings(library(tidyverse)))
 suppressMessages(suppressWarnings(library(survey)))
@@ -48,61 +50,118 @@ unweighted_input <- suppressMessages(read_csv(url(
 )))
 ```
 
-###### COMMENTED SNIPPETS
-First load three required packages.
+<br>
 
-In this example, we have raw-to-standard score lookup tables for two scales (`COG`, `EMO`), in the required `.xlsx` input structure for this procecedure. These lookup relationships are stratified by age, with the lookup table for each `agestrat` contained in a separate tab of the `.xlsx`. The lookup relationships are further stratified by test form, with separate `.xlsx` files for `parent`, `teacher`, and `self` forms.
+#### Compare demographic counts to census targets
 
-The three `.xlsx` files are named using the standard convention:
+Running the next code chunk yields a table `freq_demos_comp` that compares the demographic counts of the unweighted input to the target proportions of the U.S. Census (which are captured in the vectors with the suffix `_census`). `freq_demos_comp` is sorted by the right-most column `diff_pct`, which captures the difference in the percentage of a demographic category between the unweighted input and the census target. 
 
-`[file level variable value]-[tab level variable name]-[lookup input variable name]To[lookup output variable name].xlsx`
+The table shows, for example, that the `female-no_HS_hispanic_northeast` cell is the most under-represented cell in the input, whereas the `male-BA_plus-white-midwest` cell is the most over-represented. By contrast, the input sample is closer to the census proportions for blacks or asians of either gender from the `south` or `west`, with educational levels of `HS_grad` or  `some_college`.
 
-For example:
+By the logic expressed previously, I would therefore expect to require a demographic weighting multiplier greater than 1 for cases in the `female-no_HS_hispanic_northeast` cell, and a multiplier less than 1 for cases in the `male-BA_plus-white-midwest` cell.
+```{r demo-counts, eval=FALSE}
+var_order <- c("age", "age_range", "gender", "educ", "ethnic", "region", "clin_status")
 
-`parent-agestrat-rawToSS.xlsx`
+cat_order <- c(
+  # age
+  NA, "5", "6", "7", "8", "9", "10", "11", "12",
+  # age_range
+  NA, "5 to 8 yo", "9 to 12 yo", 
+  # Gender
+  NA, "male", "female",
+  # educ
+  NA, "no_HS", "HS_grad", "some_college", "BA_plus",
+  # Ethnicity
+  NA, "hispanic", "asian", "black", "white", "other",
+  # Region
+  NA, "northeast", "south", "midwest", "west")
 
-The generic code for reading an input file with stratification over file, tab, and table levels requries the user to designate token values. For the file-level variable, you must specify both the name (e.g., `'form'`) and the values (e.g., `c('parent', 'teacher', 'self')`). The table level of stratification captures the core lookup relationship between two variables:
+gender_census <- tibble(cat = c("female", "male"),
+                        Freq = nrow(unweighted_input)*c(0.53, 0.47))
+educ_census <- tibble(cat = c("no_HS", "HS_grad", "some_college", "BA_plus"),
+                      Freq = nrow(unweighted_input)*c(0.119, 0.263, 0.306, 0.311))
+ethnic_census <- tibble(cat = c("hispanic", "asian", "black", "white", "other"),
+                        Freq = nrow(unweighted_input)*c(0.239, 0.048, 0.136, 0.521, .056))
+region_census <- tibble(cat = c("northeast", "south", "midwest", "west"),
+                        Freq = nrow(unweighted_input)*c(0.166, 0.383, 0.212, 0.238))
 
-* `key_var`: the lookup input (e.g., `raw` score), located in the table's far-left column; and,
-* `col_var`: the lookup output (e.g., `SS`, or standard score), located in the columns to the right of the key column.
-```{r three_level_readin, echo=1:9, eval=FALSE}
+freq_demos_unweighted <- unweighted_input %>%
+  pivot_longer(age_range:clin_status, names_to = 'var', values_to = 'cat') %>%
+  group_by(var, cat) %>%
+  count(var, cat) %>%
+  arrange(match(var, var_order), match(cat, cat_order)) %>%
+  ungroup() %>%
+  mutate(
+   pct_samp = round(((n / nrow(unweighted_input)) * 100), 1)
+  ) %>%
+  select(var, cat, n, pct_samp) %>% 
+  full_join(region_census, by = "cat")
+
+list_demos <- list(freq_demos_unweighted, gender_census, educ_census, 
+                   ethnic_census, region_census)
+
+freq_demos_comp <- list_demos %>% 
+  reduce(left_join, by = "cat") %>% 
+  filter(!(var %in% c("age_range", "clin_status"))) %>% 
+  unite(census_count, c(Freq.x, Freq.y, Freq.x.x, Freq.y.y), sep = "", remove = T) %>% 
+  mutate_at(vars(census_count), ~as.integer(str_replace_all(., "NA", ""))) %>% 
+  mutate(census_pct = 100 * round(census_count/nrow(unweighted_input), 3),
+         diff_pct = census_pct - pct_samp
+         ) %>% 
+  rename(input_count = n, input_pct = pct_samp) %>% 
+  select(var, cat, input_count, census_count, input_pct, census_pct, diff_pct) %>% 
+  arrange(desc(diff_pct))
+
+rm(list = setdiff(ls(), ls(pattern = "input|comp|list")))
+
+list_census <- list(list_demos[2:5],
+     c("gender", "educ", "ethnic", "region")) %>%
+  pmap(~ ..1 %>%
+         rename_at(vars(cat), ~str_replace(., "cat", !!..2))
+  )
+
+names(list_census) <- c("gender_census", "educ_census", "ethnic_census", "region_census")
+
+list2env(list_census, envir=.GlobalEnv)
 ```
-Here we write a function `three_level_readin()` to read in the input file. We use `here::here()` and `base::paste0` to express the file path to the input file as a character string. Note the token substitutions in the string. `base::assign()` is used to assign the string to the object `path` in the global environment, so that it can be accessed from there when `three_level_readin()` is called.
-```{r three_level_readin, echo=11:14, eval=FALSE}
+
+<br>
+
+#### Implement survey functions
+
+We now use functions from the Survey package to first create a survey object based on the unweighted input data, then to rake that object against the census targets for `gender`, `educ`, `ethnic`, and `region`. In examining the resulting `rake_unweighted_input` object, I found the `prob` vector, which appears to contain the case-wise weights generated by the raking procedure. I then bound that vector to input in the data frame `input_demo_wts`, and sorted it by the `demo_wt` column.
+```{r survey-funs, eval=FALSE}
+unweighted_survey_object <- svydesign(ids = ~1, 
+                                     data = unweighted_input, 
+                                     weights = NULL)
+
+rake_unweighted_input <- rake(design = unweighted_survey_object,
+                          sample.margins = list(~gender, ~educ, ~ethnic, ~region),
+                          population.margins = list(gender_census, educ_census, 
+                                                    ethnic_census, region_census))
+
+input_demo_wts <- bind_cols(
+  rake_unweighted_input[["variables"]], 
+  data.frame(rake_unweighted_input[["prob"]])
+  ) %>% 
+  rename(demo_wt = rake_unweighted_input...prob...) %>% 
+  select(ID:clin_status, demo_wt, everything()) %>% 
+  arrange(desc(demo_wt))
+
+tail(input_demo_wts)
+
+filter(input_demo_wts, between(demo_wt, .98, 1.02))
+
+head(input_demo_wts)
 ```
-Next we pipe the directory path to the input file through functions from the `readxl` package. `readxl::excel_sheets()` extracts the tab labels of an `.xlsx` file into a character vector. `purrr::set_names()` gives each element of the vector a name that is identical to that element (e.g., `var` is named "var").
+When I examine the values in the `demo_wt` column, I see that they are related to the demographic classifications of the rows in the way that I expected them to be. That is, for example, the `demo_wt` value of `0.163` associated with the the `female-no_HS_hispanic_northeast` classification is the relatively distant from one, as we can see from calling `tail(input_demo_wts)`.
 
-`purrr::map_df()` applies the function `readxl::read_excel()` to each element of this named vector (i.e., to each tab, or sheet, of the multi-tab input `.xlsx`), and returns a data frame as its output. The `path` argument points to the input `.xlsx`, and the sheets of this input are read consecutively and stacked on top of one another in the output data frame. The `.id` argument prepends a new column, named with the `tab_strat_var` token, that identifies the origin sheet of each set of rows in the output data frame. 
-```{r three_level_readin, echo=15:22, eval=FALSE}
-```
-In the next snippet, `three_level_readin()` is called to read the three input `.xlsx` files into a single data frame. This is accomplished by calling `map()` to apply `three_level_readin()` iteratively to the three values of the file level varible, contained in the character vector `file_strat_var`. This returns three data frames as described in the previous section.
+When we examine the values of `demo_wt` clustered around 1 by calling `filter(input_demo_wts, between(demo_wt, .98, 1.02))`,  we see primarily the expected demographic categories of `HS_grad`, `black`, and `south`.
 
-These three objects are then named appropriately using `stats::setNames()`. They are stacked on top of one another and bound into a single data frame with `dplyr::bind_rows()`. The `.id` argument prepends a new column identifying the origin `.xlsx` for each set of rows, according to the appropriate value of `file_strat_var`. The resulting object is `assign()`ed to the global environment, with a name corresponding to the input file conventions, with `_lookup` appended.
-```{r three_level_readin, echo=24:30, eval=FALSE}
-```
-At this point, the data object has the following column structure:
+Here is where I run up against the limit of my understanding of the Survey functions and the output of `rake()`. Because the `female-no_HS_hispanic_northeast` cell is under-sampled relative to the census target, I would expect the `demo_wt` value to be greater than 1, by the logic I described previously. That is, the impact of the existing cases in that cell on the sample statistics would have to be magnified by a multiplier greater than 1, to offset the fact that there are fewer cases in that cell than would be dictated by the census targets.
 
-form | agestrat | rawscore | COG | EMO
------| ---------| ---------| ----| ---
-parent | 060 | 1 | 89 | 87
+The fact that `demo_wt` is __less__ than 1 for `female-no_HS_hispanic_northeast` this cell is counter-intuitive to me. It seems like an inversion of sorts of what the value should be. And that inversion phenomenon is present throughout the rows of `input_demo_wts`. Calling `head(input_demo_wts)` reveals cases from the over-sampled crossing of `BA_plus` and `midwest` with a `demo_wt` value of `2.167`. This again is counter-intuitive; I would expect a `demo_wt` less than 1, to reduce the impact of these over-sampled categories on the sample statistics.
 
-This is close to the foundational structure needed to assemble the final OES lookup table, but a further transformation is required. In the final OES table, all lookup input variables must be present in a tall, multilevel (nested) format. In the current data object, the columns `form`, `agestrat`, and `rawscore` are in this format. All possible values of `rawscore` are nested within each value of `agestrat`, and, in turn, all values of `agestrat` are nested within each value of `form`.
+I can only conclude, then, that the values of the `prob` vector are in fact the weights associated with the __input__ demographic distribation, and they in fact express the level of under-sampling or oversampling of any demographic cell. They cannot be used as demographic weighting multipliers to adjust the input sample distributions, and so these values cannot fulfill the purpose that I set up to fulfill in the Problem Statement.
 
-
-The columns `COG` and `EMO` contain SS values corresponding to each value of `rawscore`. These columns combine two key foundational lookup inputs: `scale` and `SS`. In the final OES table, the `scale` and `SS` variables must have their own columns, and values must be arranged in the tall, multilevel format. In essence, the raw-to-ss correspondence now captured in the `COG` and `EMO` columns must be nested with respect to a `scale` column in which `COG` and `EMO` are row values instead of column names.
-
-The next snippet accomplishes this transformation using `tidyr::gather()`. The transformed object is named `lookup_foundation` to denote its foundational status vis-a-vis the desired final OES table.
-
-In this call of `gather()`, `'scale'` and `'SS'` name the new columns that will hold the information now contained in the `COG` and `EMO` columns of the current data object. The `scale` column will hold the scale names `COG` and `EMO` (currently represented as column names). The `SS` column will hold the values of SS for each scale. The expression `-form, -agestrat, -rawscore` removes these three columns from the gathering operation, so that the only columns transformed are `COG` and `EMO`. In fact, the within-row relationship between `form`, `agestrat`, `rawscore` and SS that exists in the current object will be preserved in the transformed object, but it will be replicated for each value of `scale`, going down the rows of the transformed table. The transformed table thus is formatted as follows:
-
-scale | form | agestrat | rawscore | SS
------| ---------| ---------| ----| ---
-COG | parent | 060 | 1 | 89
-EMO | parent | 060 | 1 | 87
-
-In the transformed table, all five foundational lookup inputs (`scale`, `form`, `agestrat`, `rawscore`, `SS`) are each represented in their own column, which in turn contains all possible values of that input. The structure is fully nested, meaning that every possible crossing of the lookup inputs is represented in a unique row.
-
-This structure simplifies the process of adding lookup output columns to the table. To add a column, you create an input object that captures the lookup relationship between input and output (e.g., an `SS` to `age_equiv` lookup), and join that input object to `lookup_foundation`.
-
-```{r three_level_readin, echo=32:34, eval=FALSE}
-```
+<br>
