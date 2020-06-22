@@ -161,7 +161,10 @@ annotate(
   label = "samp prob = weight = 1: demo cell pct matches census pct",
   color = "purple",
   hjust = 0
-)
+) #+
+  # stat_smooth(method='lm', formula = y ~ poly(x, 2))
+
+
 
 # apply weights and calculate raw scores
 
@@ -175,7 +178,6 @@ unweighted_input <- input_demo_wts %>%
       as.character(1:50), 2, side = "left", pad = "0"), "_uw")])
   )
 
-
 ID_weights <- unweighted_input %>% 
   select(ID, demo_wt)
     
@@ -186,5 +188,21 @@ weighted_input <- original_input %>%
     as.character(1:50), 2, side = "left", pad = "0"
   ), "_w"),
   i01:i50) %>%
-  mutate(TOT_raw_weight = rowSums(.[str_c("i", str_pad(
-    as.character(1:50), 2, side = "left", pad = "0"), "_w")]) * demo_wt)
+  mutate(across(c(i01_w:i50_w),
+                ~ . * demo_wt)) %>%
+  mutate(TOT_raw_weight = rowSums(.[str_c("i", str_pad(as.character(1:50), 2, side = "left", pad = "0"), "_w")]))
+
+ID_TOT_raw_weight <- weighted_input %>% 
+  select(ID, TOT_raw_weight)
+
+weight_unweight_comp <- unweighted_input %>%
+  left_join(ID_TOT_raw_weight, by = "ID") %>%
+  select(-(i01_uw:i50_uw)) %>%
+  group_by(gender, educ, ethnic, region) %>%
+  summarize(
+    n = n(),
+    demo_wt = first(demo_wt),
+    sum_TOT_unweight = sum(TOT_raw_unweight),
+    sum_TOT_weight = round(sum(TOT_raw_weight), 0)
+  ) %>% 
+  arrange(desc(demo_wt))
