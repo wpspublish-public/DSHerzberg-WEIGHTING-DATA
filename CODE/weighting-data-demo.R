@@ -3,15 +3,9 @@ suppressMessages(suppressWarnings(library(tidyverse)))
 suppressMessages(suppressWarnings(library(survey)))
 set.seed(123)
 
-urlRemote_path  <- "https://raw.githubusercontent.com/"
-github_path <- "DSHerzberg/WEIGHTING-DATA/master/INPUT-FILES/"
-fileName_path   <- "unweighted-input.csv"
-
-original_input <- suppressMessages(read_csv(url(
-  str_c(urlRemote_path, github_path, fileName_path)
-)))
-
 var_order <- c("age", "age_range", "gender", "educ", "ethnic", "region", "clin_status")
+
+var_order_census_match  <- c("gender", "educ", "ethnic", "region")
 
 cat_order <- c(
   # age
@@ -26,6 +20,69 @@ cat_order <- c(
   NA, "hispanic", "asian", "black", "white", "other",
   # Region
   NA, "northeast", "south", "midwest", "west")
+
+urlRemote_path  <- "https://raw.githubusercontent.com/"
+github_path <- "DSHerzberg/WEIGHTING-DATA/master/INPUT-FILES/"
+fileName_path   <- "unweighted-input.csv"
+
+# read sample with non-census-matched demographics
+original_input <- suppressMessages(read_csv(url(
+  str_c(urlRemote_path, github_path, fileName_path)
+)))
+
+# read in census-matched data
+fileName_path   <- "data-input-sim.csv"
+
+census_match_input <- suppressMessages(read_csv(url(
+  str_c(urlRemote_path, github_path, fileName_path)
+)))
+
+census_match_cell_counts <- census_match_input %>% 
+  group_by(gender, educ, ethnic, region) %>% 
+  summarize(n_census = n())
+
+census_match_cat_count_gender <- census_match_input %>%
+  group_by(gender) %>%
+  summarize(n_census = n()) %>% 
+  rename(demo_cat = gender) %>% 
+  mutate(demo_var = "gender") %>% 
+  relocate(demo_var, .before = demo_cat)
+
+census_match_cat_count_educ <- census_match_input %>%
+  group_by(educ) %>%
+  summarize(n_census = n()) %>%
+  rename(demo_cat = educ) %>%
+  mutate(demo_var = "educ") %>%
+  relocate(demo_var, .before = demo_cat)
+
+census_match_cat_count_ethnic <- census_match_input %>%
+  group_by(ethnic) %>%
+  summarize(n_census = n()) %>%
+  rename(demo_cat = ethnic) %>%
+  mutate(demo_var = "ethnic") %>%
+  relocate(demo_var, .before = demo_cat)
+
+census_match_cat_count_region <- census_match_input %>%
+  group_by(region) %>%
+  summarize(n_census = n()) %>%
+  rename(demo_cat = region) %>%
+  mutate(demo_var = "region") %>%
+  relocate(demo_var, .before = demo_cat)
+
+census_match_cat_count <- bind_rows(
+  census_match_cat_count_gender, 
+  census_match_cat_count_educ, 
+  census_match_cat_count_ethnic, 
+  census_match_cat_count_region, 
+) %>% 
+  arrange(match(demo_cat, cat_order)) %>% 
+  mutate(across(
+    c(demo_var),
+    ~ case_when(
+      lag(demo_var) != demo_var | is.na(lag(demo_var)) ~ demo_var,
+      T ~ NA_character_
+    )
+  ))
 
 gender_census <- tibble(cat = c("female", "male"),
                         Freq = nrow(original_input)*c(0.53, 0.47))
@@ -65,7 +122,7 @@ freq_demos_comp <- list_demos %>%
   select(var, cat, input_count, census_count, input_pct, census_pct, diff_pct) %>% 
   arrange(desc(diff_pct))
 
-rm(list = setdiff(ls(), ls(pattern = "input|comp|list")))
+rm(list = setdiff(ls(), ls(pattern = "input|comp|list|cell|count|order")))
 
 # rename vars in `_census` dfs
 list_census <- list(list_demos[2:5],
@@ -200,9 +257,178 @@ weight_unweight_comp <- unweighted_input %>%
   select(-(i01_uw:i50_uw)) %>%
   group_by(gender, educ, ethnic, region) %>%
   summarize(
-    n = n(),
+    n_uw = n(),
     demo_wt = first(demo_wt),
     sum_TOT_unweight = sum(TOT_raw_unweight),
     sum_TOT_weight = round(sum(TOT_raw_weight), 0)
   ) %>% 
-  arrange(desc(demo_wt))
+  arrange(desc(demo_wt)) %>% 
+  full_join(census_match_cell_counts, by = c("gender", "educ", "ethnic", "region")) %>% 
+  relocate(n_uw, .before = n_census)
+
+unweighted_cat_count_gender <- input_demo_wts %>%
+  group_by(gender) %>%
+  summarize(n_input = n()) %>% 
+  rename(demo_cat = gender) %>% 
+  mutate(demo_var = "gender") %>% 
+  relocate(demo_var, .before = demo_cat)
+
+unweighted_cat_count_educ <- input_demo_wts %>%
+  group_by(educ) %>%
+  summarize(n_input = n()) %>% 
+  rename(demo_cat = educ) %>% 
+  mutate(demo_var = "educ") %>% 
+  relocate(demo_var, .before = demo_cat)
+
+unweighted_cat_count_ethnic <- input_demo_wts %>%
+  group_by(ethnic) %>%
+  summarize(n_input = n()) %>% 
+  rename(demo_cat = ethnic) %>% 
+  mutate(demo_var = "ethnic") %>% 
+  relocate(demo_var, .before = demo_cat)
+
+unweighted_cat_count_region <- input_demo_wts %>%
+  group_by(region) %>%
+  summarize(n_input = n()) %>% 
+  rename(demo_cat = region) %>% 
+  mutate(demo_var = "region") %>% 
+  relocate(demo_var, .before = demo_cat)
+
+unweighted_cat_count <- bind_rows(
+  unweighted_cat_count_gender, 
+  unweighted_cat_count_educ, 
+  unweighted_cat_count_ethnic, 
+  unweighted_cat_count_region, 
+) %>% arrange(match(demo_cat, cat_order))%>% 
+  mutate(across(
+    c(demo_var),
+    ~ case_when(
+      lag(demo_var) != demo_var | is.na(lag(demo_var)) ~ demo_var,
+      T ~ NA_character_
+    )
+  ))
+
+unweighted_TOT_sum_gender <- unweighted_input %>%
+  group_by(gender) %>%
+  summarize(TOT_sum_input = sum(TOT_raw_unweight)) %>% 
+  rename(demo_cat = gender) %>% 
+  mutate(demo_var = "gender") %>% 
+  relocate(demo_var, .before = demo_cat)
+
+unweighted_TOT_sum_educ <- unweighted_input %>%
+  group_by(educ) %>%
+  summarize(TOT_sum_input = sum(TOT_raw_unweight)) %>% 
+  rename(demo_cat = educ) %>% 
+  mutate(demo_var = "educ") %>% 
+  relocate(demo_var, .before = demo_cat)
+
+unweighted_TOT_sum_ethnic <- unweighted_input %>%
+  group_by(ethnic) %>%
+  summarize(TOT_sum_input = sum(TOT_raw_unweight)) %>% 
+  rename(demo_cat = ethnic) %>% 
+  mutate(demo_var = "ethnic") %>% 
+  relocate(demo_var, .before = demo_cat)
+
+unweighted_TOT_sum_region <- unweighted_input %>%
+  group_by(region) %>%
+  summarize(TOT_sum_input = sum(TOT_raw_unweight)) %>% 
+  rename(demo_cat = region) %>% 
+  mutate(demo_var = "region") %>% 
+  relocate(demo_var, .before = demo_cat)
+
+unweighted_TOT_sum <- bind_rows(
+  unweighted_TOT_sum_gender, 
+  unweighted_TOT_sum_educ, 
+  unweighted_TOT_sum_ethnic, 
+  unweighted_TOT_sum_region, 
+) %>% arrange(match(demo_cat, cat_order))%>% 
+  mutate(across(
+    c(demo_var),
+    ~ case_when(
+      lag(demo_var) != demo_var | is.na(lag(demo_var)) ~ demo_var,
+      T ~ NA_character_
+    )
+  ))
+
+weighted_TOT_sum_gender <- weighted_input %>%
+  group_by(gender) %>%
+  summarize(TOT_sum_census = round(sum(TOT_raw_weight))) %>% 
+  rename(demo_cat = gender) %>% 
+  mutate(demo_var = "gender") %>% 
+  relocate(demo_var, .before = demo_cat)
+
+weighted_TOT_sum_educ <- weighted_input %>%
+  group_by(educ) %>%
+  summarize(TOT_sum_census = round(sum(TOT_raw_weight))) %>% 
+  rename(demo_cat = educ) %>% 
+  mutate(demo_var = "educ") %>% 
+  relocate(demo_var, .before = demo_cat)
+
+weighted_TOT_sum_ethnic <- weighted_input %>%
+  group_by(ethnic) %>%
+  summarize(TOT_sum_census = round(sum(TOT_raw_weight))) %>% 
+  rename(demo_cat = ethnic) %>% 
+  mutate(demo_var = "ethnic") %>% 
+  relocate(demo_var, .before = demo_cat)
+
+weighted_TOT_sum_region <- weighted_input %>%
+  group_by(region) %>%
+  summarize(TOT_sum_census = round(sum(TOT_raw_weight))) %>% 
+  rename(demo_cat = region) %>% 
+  mutate(demo_var = "region") %>% 
+  relocate(demo_var, .before = demo_cat)
+
+weighted_TOT_sum <- bind_rows(
+  weighted_TOT_sum_gender, 
+  weighted_TOT_sum_educ, 
+  weighted_TOT_sum_ethnic, 
+  weighted_TOT_sum_region, 
+) %>% arrange(match(demo_cat, cat_order)) %>% 
+  mutate(across(
+    c(demo_var),
+    ~ case_when(
+      lag(demo_var) != demo_var | is.na(lag(demo_var)) ~ demo_var,
+      T ~ NA_character_
+    )
+  ))
+
+
+list_comp <- list(census_match_cat_count, unweighted_cat_count,
+                   weighted_TOT_sum, unweighted_TOT_sum)
+
+TOT_sum_cat_count_comp <- list_comp %>%
+  reduce(left_join, by = c("demo_var", "demo_cat")) %>%
+  mutate(n_diff = n_input - n_census,
+         sum_diff = TOT_sum_input - TOT_sum_census) %>%
+  relocate(contains("demo"),
+           n_input,
+           n_census,
+           TOT_sum_input,
+           TOT_sum_census,
+           n_diff,
+           sum_diff) %>%
+  mutate(demo_cat = factor(demo_cat, levels = demo_cat),)
+
+plot_data <- TOT_sum_cat_count_comp %>%
+  mutate(across(c(demo_var),
+                ~ runner::fill_run(.)))
+
+ggplot(plot_data, aes(n_diff, sum_diff)) +
+  geom_point(aes(shape = demo_var, color = demo_cat), size = 2) +
+  facet_wrap(~ demo_var) +
+  xlab("Sample size diff: unweighted input vs. census target") +
+  ylab("Sum TOT diff: unweighted input vs. census-weighted output") +
+  title()
+  geom_smooth(method = 'lm',
+              se = FALSE,
+              formula = y ~ x, 
+              size = .3
+              ) +
+  ggpmisc::stat_poly_eq(
+    formula = y ~ x,
+    aes(label = paste(..rr.label.., sep = '*plain(\',\')~')),
+    parse = TRUE
+  )
+
+  
+

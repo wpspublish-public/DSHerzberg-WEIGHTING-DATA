@@ -1,73 +1,51 @@
-suppressMessages(library(here))
 suppressMessages(suppressWarnings(library(tidyverse)))
-suppressMessages(suppressWarnings(library(survey)))
-set.seed(123)
 
 urlRemote_path  <- "https://raw.githubusercontent.com/"
 github_path <- "DSHerzberg/WEIGHTING-DATA/master/INPUT-FILES/"
-fileName_path   <- "unweighted-input.csv"
+fileName_path   <- "data-input-sim.csv"
 
-unweighted_input <- suppressMessages(read_csv(url(
+census_match_input <- suppressMessages(read_csv(url(
   str_c(urlRemote_path, github_path, fileName_path)
 )))
 
-var_order <- c("age", "age_range", "gender", "educ", "ethnic", "region", "clin_status")
+var_order_census_match  <- c("gender", "educ", "ethnic", "region")
 
-cat_order <- c(
-  # age
-  NA, "5", "6", "7", "8", "9", "10", "11", "12",
-  # age_range
-  NA, "5 to 8 yo", "9 to 12 yo", 
-  # Gender
-  NA, "male", "female",
-  # educ
-  NA, "no_HS", "HS_grad", "some_college", "BA_plus",
-  # Ethnicity
-  NA, "hispanic", "asian", "black", "white", "other",
-  # Region
-  NA, "northeast", "midwest", "south", "west")
+census_match_cat_count_gender <- census_match_input %>%
+  group_by(gender) %>%
+  summarize(n_census = n()) %>%
+  rename(demo_cat = gender) %>%
+  mutate(demo_var = "gender") %>%
+  relocate(demo_var, .before = demo_cat)
 
+census_match_cat_count_educ <- census_match_input %>%
+  group_by(educ) %>%
+  summarize(n_census = n()) %>%
+  rename(demo_cat = educ) %>%
+  mutate(demo_var = "educ") %>%
+  relocate(demo_var, .before = demo_cat)
 
-freq_demos_unweighted <- unweighted_input %>%
-  pivot_longer(age_range:clin_status, names_to = 'var', values_to = 'cat') %>%
-  group_by(var, cat) %>%
-  count(var, cat) %>%
-  arrange(match(var, var_order), match(cat, cat_order)) %>%
-  ungroup() %>%
-  mutate(
-   pct_samp = round(((n / nrow(unweighted_input)) * 100), 1)
-  ) %>%
-  select(var, cat, n, pct_samp)
+census_match_cat_count_ethnic <- census_match_input %>%
+  group_by(ethnic) %>%
+  summarize(n_census = n()) %>%
+  rename(demo_cat = ethnic) %>%
+  mutate(demo_var = "ethnic") %>%
+  relocate(demo_var, .before = demo_cat)
 
-# create survey objects that represent weights
-unweighted_survey_object <- svydesign(ids = ~1, 
-                                     data = unweighted_input, 
-                                     weights = NULL)
+census_match_cat_count_region <- census_match_input %>%
+  group_by(region) %>%
+  summarize(n_census = n()) %>%
+  rename(demo_cat = region) %>%
+  mutate(demo_var = "region") %>%
+  relocate(demo_var, .before = demo_cat)
 
-# create census percentages
-gender_census <- tibble(gender = c("female", "male"), 
-                        Freq = nrow(unweighted_input)*c(0.53, 0.47))
-educ_census <- tibble(educ = c("no_HS", "HS_grad", "some_college", "BA_plus"), 
-                      Freq = nrow(unweighted_input)*c(0.119, 0.263, 0.306, 0.311))
-ethnic_census <- tibble(ethnic = c("hispanic", "asian", "black", "white", "other"), 
-                        Freq = nrow(unweighted_input)*c(0.239, 0.048, 0.136, 0.521, .056))
-region_census <- tibble(region = c("northeast", "south", "midwest", "west"), 
-                        Freq = nrow(unweighted_input)*c(0.166, 0.383, 0.212, 0.238))
-
-
-
-
-
-
-
-dummy_gender_rake <- rake(design = dummy_survey_unweighted,
-                          sample.margins = list(~gender, ~region),
-                          population.margins = list(gender_dist, region_dist))
-
-# bind gender weights to original data
-dummy_data_gender_region_wts <- bind_cols(
-  dummy_gender_rake[["variables"]], 
-  data.frame(dummy_gender_rake[["prob"]])
-  ) %>% 
-  rename(gender_region_wt = dummy_gender_rake...prob...)
+census_match_cat_count <- var_order_census_match %>%
+  map(
+    ~
+      census_match_input %>%
+      group_by(!!.x) %>%
+      summarize(n_census = n()) %>%
+      rename(demo_cat = !!.x) %>%
+      mutate(demo_var = .x) %>%
+      relocate(demo_var, .before = demo_cat)
+  )
 
