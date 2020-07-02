@@ -1,6 +1,7 @@
 suppressMessages(library(here))
 suppressMessages(suppressWarnings(library(tidyverse)))
 suppressMessages(suppressWarnings(library(survey)))
+
 set.seed(123)
 
 var_order <- c("age", "age_range", "gender", "educ", "ethnic", "region", "clin_status")
@@ -8,38 +9,28 @@ var_order <- c("age", "age_range", "gender", "educ", "ethnic", "region", "clin_s
 var_order_census_match  <- c("gender", "educ", "ethnic", "region")
 
 cat_order <- c(
-  # age
   NA, "5", "6", "7", "8", "9", "10", "11", "12",
-  # age_range
   NA, "5 to 8 yo", "9 to 12 yo", 
-  # Gender
   NA, "male", "female",
-  # educ
   NA, "no_HS", "HS_grad", "some_college", "BA_plus",
-  # Ethnicity
   NA, "hispanic", "asian", "black", "white", "other",
-  # Region
   NA, "northeast", "south", "midwest", "west")
 
 urlRemote_path  <- "https://raw.githubusercontent.com/"
 github_path <- "DSHerzberg/WEIGHTING-DATA/master/INPUT-FILES/"
 fileName_path   <- "unweighted-input.csv"
 
-# read sample with non-census-matched demographics
 original_input <- suppressMessages(read_csv(url(
   str_c(urlRemote_path, github_path, fileName_path)
 )))
 
-# read in census-matched data
 fileName_path   <- "data-input-sim.csv"
 
 census_match_input <- suppressMessages(read_csv(url(
   str_c(urlRemote_path, github_path, fileName_path)
 )))
 
-census_match_cell_counts <- census_match_input %>% 
-  group_by(gender, educ, ethnic, region) %>% 
-  summarize(n_census = n())
+rm(list = ls(pattern = "_path"))
 
 # The next snippet uses map_df() to iterate over vec of census cats and create
 # table of counts per census cat. The key line is group_by(across(.x)), the use
@@ -82,7 +73,7 @@ rake_original_input <- rake(design = unweighted_survey_object,
                               population.margins = list(gender_census, educ_census, 
                                                         ethnic_census, region_census))
 
-# bind demo weights to original data
+# bind demo weights to original input data
 input_demo_wts <- bind_cols(
   rake_original_input[["variables"]],  
   data.frame(rake_original_input[["prob"]]), 
@@ -93,35 +84,63 @@ input_demo_wts <- bind_cols(
   select(ID:clin_status, samp_prob, demo_wt, ratio, everything()) %>% 
   arrange(desc(samp_prob))
 
-# reality check, what demo cell is likely to have the weight that deviates farthest from 1?
-#  female, no_HS, hispanic, northeast
-# what demo cell is likely to have weight closest to one?
-# female, HS grad, asian, south
 
-case_high_wt <- input_demo_wts %>% 
+# REALITY CHECK MATERIAL FOR DEMO/TEACHING ONLY ---------------------------
+
+# reality check, what demo cell is likely to have the weight that deviates
+# farthest from 1? female, no_HS, hispanic, northeast. Observe relationship
+# between sampling probability (the magnitude of deviation between this
+# category's count in the input sample and the census target for the same
+# category) and demo weight (the multiplier applied to each case in this
+# category so that its impact on the sample statistics is "as-if" it had been
+# sampled at a rate that met the census target)
+
+input_demo_wts %>% 
   filter(
     gender == "female" &
       educ == "no_HS" &
       ethnic == "hispanic" &
       region == "northeast"
   ) %>% 
+  select(-(i01:i50)) %>% 
   sample_n(1)
 
-case_1_wt <- input_demo_wts %>% 
+# what demo cell is likely to have weight closest to one? female, HS grad,
+# asian, south. See comment above re relationship between samp_prob and demo_wt.
+# The closer these two values are to 1, the closer the input count was to the
+# census target for this category).
+
+input_demo_wts %>% 
   filter(
     gender == "female" &
       educ == "HS_grad" &
       ethnic == "asian" &
       region == "south"
   ) %>% 
+  select(-(i01:i50)) %>% 
   sample_n(1)
 
-tail(input_demo_wts)
 
-filter(input_demo_wts, between(samp_prob, .98, 1.02))
+# Now we can look at different sections of the input data with demo weights,
+# which is sorted in descending order of sampling probability. The bottom (tail)
+# of the data frame contains cases from categories that were under-sampled in
+# the input, so they should have low samp_prob and high demo_wt.
+tail(input_demo_wts) %>% 
+  select(-(i01:i50))
 
-head(input_demo_wts)
+# Here we look at a small slice of the data frame containing cases from cats
+# whose counts closely approximated their census targets. Both samp_prob and
+# demo_wt should be relatively close to 1.
+filter(input_demo_wts, between(samp_prob, .98, 1.02)) %>% 
+  select(-(i01:i50))
 
+# The top (head) of the data frame contains cases from categories that were
+# over-sampled in the input, so they should have high samp_prob and low demo_wt.
+head(input_demo_wts) %>% 
+  select(-(i01:i50))
+
+
+# This plot shows the relationship between sampling probability and demo weight.
 ggplot(input_demo_wts, aes(demo_wt, samp_prob)) +
   geom_line(color = "darkblue", size = 1) +
   geom_point(x=1, y=1, color='purple', size = 3) + 
@@ -157,6 +176,8 @@ annotate(
 
 # apply weights and calculate raw scores
 
+# In the unweighted data set, item responses do not have weighting multipliers
+# applied; item names have `_uw` suffix.
 unweighted_input <- input_demo_wts %>% 
   select(-c(samp_prob, ratio)) %>%
   rename_with(~ str_c("i", str_pad(
@@ -170,6 +191,8 @@ unweighted_input <- input_demo_wts %>%
 ID_weights <- unweighted_input %>% 
   select(ID, demo_wt)
     
+# In the weighted data set, each item score has its case's weighting multiplier
+# applied; item names have `_w` suffix.
 weighted_input <- original_input %>%
   left_join(ID_weights, by = "ID") %>%
   relocate(demo_wt, .before = i01) %>%
@@ -184,20 +207,36 @@ weighted_input <- original_input %>%
 ID_TOT_raw_weight <- weighted_input %>% 
   select(ID, TOT_raw_weight)
 
-weight_unweight_comp <- unweighted_input %>%
-  left_join(ID_TOT_raw_weight, by = "ID") %>%
-  select(-(i01_uw:i50_uw)) %>%
-  group_by(gender, educ, ethnic, region) %>%
-  summarize(
-    n_uw = n(),
-    demo_wt = first(demo_wt),
-    sum_TOT_unweight = sum(TOT_raw_unweight),
-    sum_TOT_weight = round(sum(TOT_raw_weight), 0)
-  ) %>% 
-  arrange(desc(demo_wt)) %>% 
-  full_join(census_match_cell_counts, by = c("gender", "educ", "ethnic", "region")) %>% 
-  relocate(n_uw, .before = n_census)
+# The next snippet yields a table that is a summary comparison of the weighted
+# and unweighted data sets. Crossing all categories of the four demo vars of
+# interest (gender, educ, ethnic, region) yields a total of 160 possible cells
+# that could have cases in either the original input or census matched data. The
+# table `weight_unweight_comp` has 146 rows, meaning that either the input data
+# or the census matched data had at least 1 case in 146 of the 160 possible
+# cells. Of these 146 cells, 127 had cases in the input data, and so demo
+# weights and other summary statistics are only calculated for those rows.
 
+# For each cell the table gives the count of cases present in the input and
+# census matched samples. It also gives the summed total raw scores for that
+# cell, for the weighted and unweighted versions of the input data. Because the
+# table is sorted descending by demo_wt, you observe the expected relationship
+# between the unweighted and weighted score sums.
+# weight_unweight_comp <- unweighted_input %>%
+#   left_join(ID_TOT_raw_weight, by = "ID") %>%
+#   select(-(i01_uw:i50_uw)) %>%
+#   group_by(gender, educ, ethnic, region) %>%
+#   summarize(
+#     n_uw = n(),
+#     demo_wt = first(demo_wt),
+#     sum_TOT_unweight = sum(TOT_raw_unweight),
+#     sum_TOT_weight = round(sum(TOT_raw_weight), 0)
+#   ) %>% 
+#   arrange(desc(demo_wt)) %>% 
+#   full_join(census_match_cell_counts, by = c("gender", "educ", "ethnic", "region")) %>% 
+#   relocate(n_uw, .before = n_census)
+
+# Gives the counts for the 15 categories (across the four demo vars) for the
+# original input data.
 unweighted_cat_count <- var_order_census_match %>%
   map_df(
     ~
@@ -208,15 +247,10 @@ unweighted_cat_count <- var_order_census_match %>%
       mutate(var = all_of(.x)) %>%
       relocate(var, .before = cat)
   ) %>% 
-  arrange(match(cat, cat_order))# %>% 
-# mutate(across(
-#   c(var),
-#   ~ case_when(
-#     lag(var) != var | is.na(lag(var)) ~ var,
-#     T ~ NA_character_
-#   )
-# ))
+  arrange(match(cat, cat_order))
 
+# Gives the unweighted sum of total scores for the 15 categories (across the
+# four demo vars) for the original input data.
 unweighted_TOT_sum <- var_order_census_match %>%
   map_df(
     ~
@@ -227,116 +261,65 @@ unweighted_TOT_sum <- var_order_census_match %>%
       mutate(var = all_of(.x)) %>%
       relocate(var, .before = cat)
   ) %>% 
-  arrange(match(cat, cat_order))# %>% 
-# mutate(across(
-#   c(var),
-#   ~ case_when(
-#     lag(var) != var | is.na(lag(var)) ~ var,
-#     T ~ NA_character_
-#   )
-# ))
+  arrange(match(cat, cat_order))
 
-
-#################### START HERE: CONSOLIDATE weighted_TOT_sum USING TEMPLATE IN
-#################### NEXT SNIPPET
-
-
-unweighted_TOT_sum_map <- var_order_census_match %>%
+# Gives the weighted sum of total scores for the 15 categories (across the
+# four demo vars) for the original input data.
+weighted_TOT_sum <- var_order_census_match %>%
   map_df(
     ~
-      unweighted_input %>%
+      weighted_input %>%
       group_by(across(all_of(.x))) %>%
-      summarize(TOT_sum_input = sum(TOT_raw_unweight)) %>% 
+      summarize(TOT_sum_weighted = round(sum(TOT_raw_weight))) %>% 
       rename(cat = all_of(.x)) %>%
       mutate(var = all_of(.x)) %>%
       relocate(var, .before = cat)
   ) %>% 
-  arrange(match(cat, cat_order))# %>% 
-# mutate(across(
-#   c(var),
-#   ~ case_when(
-#     lag(var) != var | is.na(lag(var)) ~ var,
-#     T ~ NA_character_
-#   )
-# ))
-
-weighted_TOT_sum_gender <- weighted_input %>%
-  group_by(gender) %>%
-  summarize(TOT_sum_census = round(sum(TOT_raw_weight))) %>% 
-  rename(demo_cat = gender) %>% 
-  mutate(demo_var = "gender") %>% 
-  relocate(demo_var, .before = demo_cat)
-
-weighted_TOT_sum_educ <- weighted_input %>%
-  group_by(educ) %>%
-  summarize(TOT_sum_census = round(sum(TOT_raw_weight))) %>% 
-  rename(demo_cat = educ) %>% 
-  mutate(demo_var = "educ") %>% 
-  relocate(demo_var, .before = demo_cat)
-
-weighted_TOT_sum_ethnic <- weighted_input %>%
-  group_by(ethnic) %>%
-  summarize(TOT_sum_census = round(sum(TOT_raw_weight))) %>% 
-  rename(demo_cat = ethnic) %>% 
-  mutate(demo_var = "ethnic") %>% 
-  relocate(demo_var, .before = demo_cat)
-
-weighted_TOT_sum_region <- weighted_input %>%
-  group_by(region) %>%
-  summarize(TOT_sum_census = round(sum(TOT_raw_weight))) %>% 
-  rename(demo_cat = region) %>% 
-  mutate(demo_var = "region") %>% 
-  relocate(demo_var, .before = demo_cat)
-
-weighted_TOT_sum <- bind_rows(
-  weighted_TOT_sum_gender, 
-  weighted_TOT_sum_educ, 
-  weighted_TOT_sum_ethnic, 
-  weighted_TOT_sum_region, 
-) %>% arrange(match(demo_cat, cat_order)) %>% 
-  mutate(across(
-    c(demo_var),
-    ~ case_when(
-      lag(demo_var) != demo_var | is.na(lag(demo_var)) ~ demo_var,
-      T ~ NA_character_
-    )
-  ))
-
+  arrange(match(cat, cat_order))
 
 list_comp <- list(census_match_cat_count, unweighted_cat_count,
                    weighted_TOT_sum, unweighted_TOT_sum)
 
 TOT_sum_cat_count_comp <- list_comp %>%
-  reduce(left_join, by = c("demo_var", "demo_cat")) %>%
+  reduce(left_join, by = c("var", "cat")) %>%
   mutate(n_diff = n_input - n_census,
-         sum_diff = TOT_sum_input - TOT_sum_census) %>%
-  relocate(contains("demo"),
+         sum_diff = TOT_sum_input - TOT_sum_weighted) %>%
+  relocate(var,
+           cat,
            n_input,
            n_census,
            TOT_sum_input,
-           TOT_sum_census,
+           TOT_sum_weighted,
            n_diff,
            sum_diff) %>%
-  mutate(demo_cat = factor(demo_cat, levels = demo_cat),)
+  mutate(cat = factor(cat, levels = cat),) %>% 
+  mutate(across(
+  c(var),
+  ~ case_when(
+    lag(var) != var | is.na(lag(var)) ~ var,
+    T ~ NA_character_
+  )
+))
 
 plot_data <- TOT_sum_cat_count_comp %>%
-  mutate(across(c(demo_var),
+  mutate(across(c(var),
                 ~ runner::fill_run(.)))
 
 ggplot(plot_data, aes(n_diff, sum_diff)) +
-  geom_point(aes(shape = demo_var, color = demo_cat), size = 2) +
-  facet_wrap(~ demo_var) +
+  geom_point(aes(shape = var, color = cat), size = 3) +
+  facet_wrap(~ var) +
   xlab("Sample size diff: unweighted input vs. census target") +
   ylab("Sum TOT diff: unweighted input vs. census-weighted output") +
-  title()
+  # title() +
   geom_smooth(method = 'lm',
-              se = FALSE,
+              se = F,
               formula = y ~ x, 
               size = .3
               ) +
   ggpmisc::stat_poly_eq(
     formula = y ~ x,
     aes(label = paste(..rr.label.., sep = '*plain(\',\')~')),
+    rr.digits = 5, 
     parse = TRUE
   )
 
