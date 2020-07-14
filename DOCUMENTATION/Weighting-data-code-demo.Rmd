@@ -9,7 +9,7 @@ knitr::opts_chunk$set(echo = TRUE)
 
 ### Overview
 
-To standardize and develop norms for behavior rating scales, we collect nationwide samples comprised of data from many thousands of persons. Our intent is to have the demographic makeup of these samples match the U.S. census proportions, as closely as possible. The demographic variables of interest are age, gender, (parent) education level, race/ethnicity, and U.S. geographic region.
+To develop norms for tests and behavior rating scales, we collect nationwide samples comprised of data from many thousands of persons. Our intent is to have the demographic makeup of these samples match the U.S. census proportions, as closely as possible. The demographic variables of interest are age, gender, (parent) education level, race/ethnicity, and U.S. geographic region.
 
 Our approach is to stratify the sample by age, and ensure that we have enough cases within each age group to develop stable norms. Within each age stratum, we attempt to match the proportions of gender, education level, race/ethnicity, and region to the census proportions for that age group. Inevitably, some demographic cells are harder to fill than others, especially lower levels of education and certain ethnic minority groups. Pursuing the last few cases to fill out these cells is expensive and time-consuming.
 
@@ -34,7 +34,7 @@ To recount, we can use this weighting method to adjust the values of the data in
 
 #### Load packages, specify input parameters, read data
 
-We read in two simulated data sets, each includeing 1000 cases with the four demographic variables of interest, and 50 behavior rating items coded as described above. 
+We read in two simulated data sets, each including 1000 cases with the four demographic variables of interest, and 50 behavior rating items coded as described above. 
 
 * `original_input` is an example of a typical WPS research data set, in which the distributions of the demographic variables do not match the U.S. Census targets.
 * `census_match_input` matches the census targets in its demographic composition.
@@ -81,7 +81,7 @@ rm(list = ls(pattern = "_path"))
 <br>
 
 ###### COMMENTED SNIPPETS
-Because some downstream procedures invoke R's random number generator, we use `base::set.seed()` to ensure that we get the same numerical results every time we run the script.
+Because some downstream procedures invoke R's random number generator, we use `base::set.seed()` to ensure that we obtain the same numerical results every time we run the script.
 ```{r read-data, echo = 5, eval = F}
 ```
 The next snippet shows a method for reading data from a remote server. This makes the script more portable, because it does not depend on reading data stored on a local machine. The remote file path is divided into three segements (`urlRemote_path`, `github_path`, `fileName_path`), which are initialized as character vectors. This modularization allows easy subsitution of different servers, file names, etc. In the call of `readr::read_csv(url())`, which reads in the data, the three file path segments are pasted together into a single URL, using `stringr::str_c()`.
@@ -96,9 +96,6 @@ The script removes unneeded objects from the environment using `base::rm()`, whi
 #### Calculate demographic weighting multipliers using the `survey` package
 
 The `survey` package provides the functions needed to implement demographic weighting multipliers as described in the _Overview_ section. Running the next code section yields a data frame in which each case is paired with a muliplier that reflects the level of divergence between the distribution of its demographic cell in the input data, and the target distributions from the U.S. Census.
-
-# START HERE!
-
 
 ###### RUNNABLE CODE
 ```{r weights, eval = F}
@@ -144,6 +141,15 @@ input_demo_wts <- bind_cols(
   arrange(desc(samp_prob))
 ```
 
+
+<br>
+
+###### COMMENTED SNIPPETS
+The `survey` package requires as input the census target counts for the four key demographic variables. We obtain these counts from `census_match_input`, one of the date files read in upstream.
+
+In the next snippet, we use `purrr::map_df()` to iterate over the character vector `var_order_census_match`, which contains the names of the four demographic variables. `map_df()` returns a data frame as output (instead of a list). The code within `map_df()` will be executed once for each element of `var_order_census_match`, and that element is substituted into the code wherever the shorthand `.x` appears.
+```{r weights, echo = 1:11, eval = F}
+```
 <br>
 
 

@@ -368,7 +368,7 @@ summary {
 
 <div id="overview" class="section level3">
 <h3>Overview</h3>
-<p>To standardize and develop norms for behavior rating scales, we collect nationwide samples comprised of data from many thousands of persons. Our intent is to have the demographic makeup of these samples match the U.S. census proportions, as closely as possible. The demographic variables of interest are age, gender, (parent) education level, race/ethnicity, and U.S. geographic region.</p>
+<p>To develop norms for tests and behavior rating scales, we collect nationwide samples comprised of data from many thousands of persons. Our intent is to have the demographic makeup of these samples match the U.S. census proportions, as closely as possible. The demographic variables of interest are age, gender, (parent) education level, race/ethnicity, and U.S. geographic region.</p>
 <p>Our approach is to stratify the sample by age, and ensure that we have enough cases within each age group to develop stable norms. Within each age stratum, we attempt to match the proportions of gender, education level, race/ethnicity, and region to the census proportions for that age group. Inevitably, some demographic cells are harder to fill than others, especially lower levels of education and certain ethnic minority groups. Pursuing the last few cases to fill out these cells is expensive and time-consuming.</p>
 <p>We now have the option of weighting the data of samples that fall short of the ideal demographic composition. We can calculate weighting multipliers corresponding to each possible crossing of the four key demographic variables. For example, one crossing would be <em>female</em> X <em>high-school diploma</em> X <em>hispanic</em> X <em>south region</em>. All cases falling into that bucket would have the same weighting multiplier.</p>
 <p>We can apply that multiplier to the data at the most granular level. As an example, we can use a hypothetical behavior rating scale where a parent rates 50 items about their child’s level of hyperactive/inattentive behavior during the past month. These behaviors are rated on a frequency scale, coded as follows:</p>
@@ -387,7 +387,7 @@ summary {
 <h3>Code Demonstration</h3>
 <div id="load-packages-specify-input-parameters-read-data" class="section level4">
 <h4>Load packages, specify input parameters, read data</h4>
-<p>We read in two simulated data sets, each includeing 1000 cases with the four demographic variables of interest, and 50 behavior rating items coded as described above.</p>
+<p>We read in two simulated data sets, each including 1000 cases with the four demographic variables of interest, and 50 behavior rating items coded as described above.</p>
 <ul>
 <li><code>original_input</code> is an example of a typical WPS research data set, in which the distributions of the demographic variables do not match the U.S. Census targets.</li>
 <li><code>census_match_input</code> matches the census targets in its demographic composition.</li>
@@ -432,7 +432,7 @@ rm(list = ls(pattern = &quot;_path&quot;))</code></pre>
 </div>
 <div id="commented-snippets" class="section level6">
 <h6>COMMENTED SNIPPETS</h6>
-<p>Because some downstream procedures invoke R’s random number generator, we use <code>base::set.seed()</code> to ensure that we get the same numerical results every time we run the script.</p>
+<p>Because some downstream procedures invoke R’s random number generator, we use <code>base::set.seed()</code> to ensure that we obtain the same numerical results every time we run the script.</p>
 <pre class="r"><code>set.seed(123)</code></pre>
 <p>The next snippet shows a method for reading data from a remote server. This makes the script more portable, because it does not depend on reading data stored on a local machine. The remote file path is divided into three segements (<code>urlRemote_path</code>, <code>github_path</code>, <code>fileName_path</code>), which are initialized as character vectors. This modularization allows easy subsitution of different servers, file names, etc. In the call of <code>readr::read_csv(url())</code>, which reads in the data, the three file path segments are pasted together into a single URL, using <code>stringr::str_c()</code>.</p>
 <pre class="r"><code>urlRemote_path  &lt;- &quot;https://raw.githubusercontent.com/&quot;
@@ -450,10 +450,6 @@ original_input &lt;- suppressMessages(read_csv(url(
 <div id="calculate-demographic-weighting-multipliers-using-the-survey-package" class="section level4">
 <h4>Calculate demographic weighting multipliers using the <code>survey</code> package</h4>
 <p>The <code>survey</code> package provides the functions needed to implement demographic weighting multipliers as described in the <em>Overview</em> section. Running the next code section yields a data frame in which each case is paired with a muliplier that reflects the level of divergence between the distribution of its demographic cell in the input data, and the target distributions from the U.S. Census.</p>
-</div>
-</div>
-<div id="start-here" class="section level1">
-<h1>START HERE!</h1>
 <div id="runnable-code-1" class="section level6">
 <h6>RUNNABLE CODE</h6>
 <pre class="r"><code>census_match_cat_count &lt;- var_order_census_match %&gt;%
@@ -497,11 +493,29 @@ input_demo_wts &lt;- bind_cols(
   select(ID:clin_status, samp_prob, demo_wt, ratio, everything()) %&gt;% 
   arrange(desc(samp_prob))</code></pre>
 <p><br></p>
+</div>
+<div id="commented-snippets-1" class="section level6">
+<h6>COMMENTED SNIPPETS</h6>
+<p>The <code>survey</code> package requires as input the census target counts for the four key demographic variables. We obtain these counts from <code>census_match_input</code>, one of the date files read in upstream.</p>
+<p>In the next snippet, we use <code>purrr::map_df()</code> to iterate over the character vector <code>var_order_census_match</code>, which contains the names of the four demographic variables. <code>map_df()</code> returns a data frame as output (instead of a list). The code within the <code>map_df()</code> will be executed once for each element of <code>var_order_census_match</code>, and that element is substituted into the code wherever the shorthand <code>.x</code> appears.</p>
+<pre class="r"><code>census_match_cat_count &lt;- var_order_census_match %&gt;%
+  map_df(
+    ~
+      census_match_input %&gt;%
+      group_by(across(all_of(.x))) %&gt;%
+      summarize(n_census = n()) %&gt;%
+      rename(cat = all_of(.x)) %&gt;%
+      mutate(var = all_of(.x)) %&gt;%
+      relocate(var, .before = cat)
+  ) %&gt;% 
+  arrange(match(cat, cat_order))</code></pre>
 <p><br></p>
 <p><br></p>
 <p><br></p>
 <p><br></p>
 <p><br></p>
+<p><br></p>
+</div>
 </div>
 <div id="compare-demographic-counts-to-census-targets" class="section level4">
 <h4>Compare demographic counts to census targets</h4>
