@@ -145,9 +145,15 @@ input_demo_wts <- bind_cols(
 <br>
 
 ###### COMMENTED SNIPPETS
-The `survey` package requires as input the census target counts for the four key demographic variables. We obtain these counts from `census_match_input`, one of the date files read in upstream.
+The `survey` package requires as input the census target counts for the four key demographic variables. We obtain these counts from `census_match_input`, one of the data files read in upstream.
 
-In the next snippet, we use `purrr::map_df()` to iterate over the character vector `var_order_census_match`, which contains the names of the four demographic variables. `map_df()` returns a data frame as output (instead of a list). The code within `map_df()` will be executed once for each element of `var_order_census_match`, and that element is substituted into the code wherever the shorthand `.x` appears.
+In the next snippet, we use `purrr::map_df()` to iterate over the character vector `var_order_census_match`, which contains the names of the four demographic variables. `map_df()` returns a data frame as output (instead of a list). The code within `map_df()` will be executed once for each element of `var_order_census_match`, and that element is substituted into the code wherever the token `.x` appears.
+
+Within `map_df()`, an anonymous function is defined wherein `census_match_input` is piped into `dplyr::group_by()`. The use of `dplyr::across()` in this context allows us to group the data object by the demographic variable identified by the current value of `.x`, without having to introduce the complexities of non-standard evaluation and unquoting. `tidyselect::all_of()` is a helper that allows `across()` (and other selecting functions) to select variables contained in a character vector.
+
+Once the data are grouped by demographic variable, we can use `dplyr::summarize()` and `dplyr::n()` to create a summary table that gives the count of cases falling into the categories of each demographic variable. This is done sequentially as the function iterates over the elements of `var_order_census_match`, and the output is bound into a single data frame by `map_df`.
+
+The remainder of this snippet formats the summary table. `dplyr::rename()` applies a uniform name `cat` to the column holding the categories within each demographic variable, `dplyr::mutate` creates a new column `var` to hold the names of the demographic variables, `dplyr::relocate()` reorders the columns, and `dplyr::arrange()` sorts the table by `cat` to `match()` an order given by the character vector `cat_order`.
 ```{r weights, echo = 1:11, eval = F}
 ```
 <br>
