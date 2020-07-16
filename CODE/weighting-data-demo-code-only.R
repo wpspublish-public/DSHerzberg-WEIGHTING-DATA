@@ -32,10 +32,6 @@ census_match_input <- suppressMessages(read_csv(url(
 
 rm(list = ls(pattern = "_path"))
 
-# The next snippet uses map_df() to iterate over vec of census cats and create
-# table of counts per census cat. The key line is group_by(across(.x)), the use
-# of across() here allows you to use the elements of a char vec as grouping
-# variables within map(), without having to get into the complexities of NSE.
 census_match_cat_count <- var_order_census_match %>%
   map_df(
     ~
@@ -48,9 +44,6 @@ census_match_cat_count <- var_order_census_match %>%
   ) %>% 
   arrange(match(cat, cat_order))
 
-
-# this snippet breaks out the census counts into separate dfs, which are needed
-# as input by survey::rake()
 var_order_census_match %>%
   map(
     ~ census_match_cat_count %>%

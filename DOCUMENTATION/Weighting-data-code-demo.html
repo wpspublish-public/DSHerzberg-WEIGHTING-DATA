@@ -496,10 +496,10 @@ input_demo_wts &lt;- bind_cols(
 </div>
 <div id="commented-snippets-1" class="section level6">
 <h6>COMMENTED SNIPPETS</h6>
-<p>The <code>survey</code> package requires as input the census target counts for the four key demographic variables. We obtain these counts from <code>census_match_input</code>, one of the data files read in upstream.</p>
+<p>The <code>survey</code> package requires as input the census target counts for the four key demographic variables. We can obtain these counts from <code>census_match_input</code>, one of the data files read in upstream, because it has the same number of cases as the file to be weighted <code>original_input</code>.</p>
 <p>In the next snippet, we use <code>purrr::map_df()</code> to iterate over the character vector <code>var_order_census_match</code>, which contains the names of the four demographic variables. <code>map_df()</code> returns a data frame as output (instead of a list). The code within <code>map_df()</code> will be executed once for each element of <code>var_order_census_match</code>, and that element is substituted into the code wherever the token <code>.x</code> appears.</p>
-<p>Within <code>map_df()</code>, an anonymous function is defined wherein <code>census_match_input</code> is piped into <code>dplyr::group_by()</code>. The use of <code>dplyr::across()</code> in this context allows us to group the data object by the demographic variable identified by the current value of <code>.x</code>, without having to introduce the complexities of non-standard evaluation and unquoting. <code>tidyselect::all_of()</code> is a helper that allows <code>across()</code> (and other selecting functions) to select variables contained in a character vector.</p>
-<p>Once the data are grouped by demographic variable, we can use <code>dplyr::summarize()</code> and <code>dplyr::n()</code> to create a summary table that gives the count of cases falling into the categories of each demographic variable. This is done sequentially as the function iterates over the elements of <code>var_order_census_match</code>, and the output is bound into a single data frame by <code>map_df</code>.</p>
+<p>Within <code>map_df()</code>, an anonymous function is defined wherein <code>census_match_input</code> is piped into <code>dplyr::group_by()</code>. The use of <code>dplyr::across()</code> in this context allows us to group the data object by the demographic variable identified by the current value of <code>.x</code>, without having to introduce the complexities of non-standard evaluation (NSE) and unquoting. <code>tidyselect::all_of()</code> is a helper that allows <code>across()</code> (and other selecting functions) to select variables contained in a character vector.</p>
+<p>Once the data are grouped by demographic variable, we can use <code>dplyr::summarize()</code> and <code>dplyr::n()</code> to create a summary table that gives the count of cases in the categories of each demographic variable. This is done sequentially as the function iterates over the elements of <code>var_order_census_match</code>, and the output is bound into a single data frame by <code>map_df</code>.</p>
 <p>The remainder of this snippet formats the summary table. <code>dplyr::rename()</code> applies a uniform name <code>cat</code> to the column holding the categories within each demographic variable, <code>dplyr::mutate</code> creates a new column <code>var</code> to hold the names of the demographic variables, <code>dplyr::relocate()</code> reorders the columns, and <code>dplyr::arrange()</code> sorts the table by <code>cat</code> to <code>match()</code> an order given by the character vector <code>cat_order</code>.</p>
 <pre class="r"><code>census_match_cat_count &lt;- var_order_census_match %&gt;%
   map_df(
@@ -512,6 +512,18 @@ input_demo_wts &lt;- bind_cols(
       relocate(var, .before = cat)
   ) %&gt;% 
   arrange(match(cat, cat_order))</code></pre>
+<p>To prepare the census target counts for the <code>survey</code> package, we need to split the data frame containing these counts into four separate data frames, one for each demographic variable. Once again, we use <code>map()</code> to iterate over the names of the demographic variables, which are contained in <code>var_order_census_match</code>.</p>
+<p>Within <code>map()</code>, an anonymous function is defined wherein the table of census target counts <code>census_match_cat_counts</code> created in the previous snippet is piped into <code>dplyr::filter()</code>, which selects only the rows for which the predicate <code>var == all_of(.x)</code> returns <code>TRUE</code>. That is, it selects only the rows where <code>var</code> is equal to the current element of <code>census_match_cat_counts</code>, designated by <code>.x</code>. We then remove the <code>var</code> column from the data object using <code>select(var)</code>, and we <code>rename()</code> the two remaining columns. In order rename column <code>cat</code> to <code>.x</code>, we must unquote the <code>.x</code> element using <code>!!</code> and then employ the NSE operator <code>:=</code> instead of the conventional <code>=</code> sign.</p>
+<p><code>map()</code> returns a list containing four separate data frames containing census target counts, one for each demographic variable. We name the elements of this list using <code>stats::setNames()</code>. The names are drawn from a four-element character vector that combines the elements of <code>var_order_census_match</code> with the suffix <code>&quot;_census&quot;</code>, concatenated with <code>str_c()</code>. Then we use <code>base::list2env()</code> to extract the four data frames into the global environment.</p>
+<pre class="r"><code>var_order_census_match %&gt;%
+  map(
+    ~ census_match_cat_count %&gt;%
+      filter(var == all_of(.x)) %&gt;%
+      select(-var) %&gt;%
+      rename(!!.x := cat, Freq = n_census)
+  ) %&gt;%
+  setNames(str_c(var_order_census_match, &quot;_census&quot;)) %&gt;%
+  list2env(envir = .GlobalEnv)</code></pre>
 <p><br></p>
 <p><br></p>
 <p><br></p>
