@@ -133,9 +133,9 @@ rake_original_input <- rake(design = unweighted_survey_object,
 input_demo_wts <- bind_cols(
   rake_original_input[["variables"]],  
   data.frame(rake_original_input[["prob"]]), 
-  data.frame(demo_wt= weights(rake_original_input))
+  data.frame(demo_wt = weights(rake_original_input))
 ) %>% 
-  rename(samp_prob  = rake_original_input...prob...) %>% 
+  rename(samp_prob = rake_original_input...prob...) %>% 
   mutate(ratio = samp_prob / demo_wt) %>% 
   select(ID:clin_status, samp_prob, demo_wt, ratio, everything()) %>% 
   arrange(desc(samp_prob))
@@ -162,6 +162,21 @@ Within `map()`, an anonymous function is defined wherein the table of census tar
 
 `map()` returns a list containing four separate data frames containing census target counts. We name the elements of this list using `stats::setNames()`. The names are drawn from a four-element character vector that combines the elements of `var_order_census_match` with the suffix `"_census"`, concatenated with `str_c()`. Then we use `base::list2env()` to extract the four data frames into the global environment.
 ```{r weights, echo = 13:21, eval = F}
+```
+The first step in using the `survey` package is calling `survey::svydesign()`, which processes the input data to create a survey object (here named `unweighted_survey_object`). The survey object is a list that includes the input data frame (via the argument `data = original_input_`) and other R objects needed by various functions in the `survey` package. `ids =` is a required argument specifying clusters in the input, here the forumula `~1` indicates no clusters. `weights = NULL` indicates that there are no pre-existing survey weights in the data.
+```{r weights, echo = 23:25, eval = F}
+```
+Recall that our goal in using the `survey` package is to generate demographic weighting multipliers that allow us to adjust data from samples that do not match the demographic composition of the U.S. census. To do this we need to _rake_ our input data against the census target counts for the four demographic varibles. Raking (invoked by calling `survey::rake()`) is the analytic step by which we derive multipliers that allow the cases in our input sample to have the numerical impact that they would if the input demographic counts matched the census counts.
+
+Like `svydesign()`, `rake()` returns a list of objects that can be used by other `survey` functions. The first input to `rake()` is the survey design object created in the previous step, specified here by the argument `design = unweighted_survey_object`. The next input is the sample margins; that is, the unweighted demographic counts of the four variables of interest, from our input file `original_input`. This data frame is contained in `unweighted_survey_object`, and we extract the four counts with the argument `sample.margins = list(~gender, ~educ, ~ethnic, ~region)`, prepending the formula shorthand `~` to the name of each variable. The final input is the target census counts, or population margins. These counts are drawn from the four separate data frames that we created upstream, via the argument `population.margins = list(gender_census, educ_census, ethnic_census, region_census)`.
+```{r weights, echo = 27:30, eval = F}
+```
+We are now in a position to calculate the demographic weighting multipliers for each case in our input sample. Recall that each case can be classified by which possible crossing of the four demographic variables (e.g., _female_ X _high-school diploma_ X _hispanic_ X _south region_) it falls into. Each of these possible crossings is associated with a unique demographic weighting multiplier, which is a function of the level of divergence between the unweighted input count of that crossing, and the target count from the U.S. census.
+
+We can create a data frame with case-wise demographic multipliers using `dplyr::bind_cols()`, which joins input columns side-by-side, without matching by an index term. We start with the input data set, which we pluck from the raked object `rake_original_input` by subsetting `[[]]` the element `"variables"`. To this we bind the `"prob"` element from `rake_original_input`, which we convert into a column by wrapping it in `base::data.frame()`. The `"prob"` column holds the sampling probabilities associated with the input demographic counts, which are not themselves weighting multipliers, but are an expression of the divergence between the input sample demographics and the census targets. Finally, we bind a new column `demo_wt` that holds the actual case-wise weighting multipliers. These are extracted from `rake_original_input` by calling `survey::weights()`.
+
+The remainder of this snippet restructures, relables, and sorts this new data frame `input_demo_wts` containing the case-wise weighting multiplers), by applying `dplyr` functions as described previously.
+```{r weights, echo = 32:40, eval = F}
 ```
 <br>
 

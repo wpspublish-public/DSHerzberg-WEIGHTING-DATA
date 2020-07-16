@@ -81,9 +81,9 @@ rake_original_input <- rake(design = unweighted_survey_object,
 input_demo_wts <- bind_cols(
   rake_original_input[["variables"]],  
   data.frame(rake_original_input[["prob"]]), 
-  data.frame(demo_wt= weights(rake_original_input))
+  data.frame(demo_wt = weights(rake_original_input))
 ) %>% 
-  rename(samp_prob  = rake_original_input...prob...) %>% 
+  rename(samp_prob = rake_original_input...prob...) %>% 
   mutate(ratio = samp_prob / demo_wt) %>% 
   select(ID:clin_status, samp_prob, demo_wt, ratio, everything()) %>% 
   arrange(desc(samp_prob))

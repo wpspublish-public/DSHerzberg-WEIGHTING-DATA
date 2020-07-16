@@ -486,9 +486,9 @@ rake_original_input &lt;- rake(design = unweighted_survey_object,
 input_demo_wts &lt;- bind_cols(
   rake_original_input[[&quot;variables&quot;]],  
   data.frame(rake_original_input[[&quot;prob&quot;]]), 
-  data.frame(demo_wt= weights(rake_original_input))
+  data.frame(demo_wt = weights(rake_original_input))
 ) %&gt;% 
-  rename(samp_prob  = rake_original_input...prob...) %&gt;% 
+  rename(samp_prob = rake_original_input...prob...) %&gt;% 
   mutate(ratio = samp_prob / demo_wt) %&gt;% 
   select(ID:clin_status, samp_prob, demo_wt, ratio, everything()) %&gt;% 
   arrange(desc(samp_prob))</code></pre>
@@ -513,8 +513,8 @@ input_demo_wts &lt;- bind_cols(
   ) %&gt;% 
   arrange(match(cat, cat_order))</code></pre>
 <p>To prepare the census target counts for the <code>survey</code> package, we need to split the data frame containing these counts into four separate data frames, one for each demographic variable. Once again, we use <code>map()</code> to iterate over the names of the demographic variables, which are contained in <code>var_order_census_match</code>.</p>
-<p>Within <code>map()</code>, an anonymous function is defined wherein the table of census target counts <code>census_match_cat_counts</code> created in the previous snippet is piped into <code>dplyr::filter()</code>, which selects only the rows for which the predicate <code>var == all_of(.x)</code> returns <code>TRUE</code>. That is, it selects only the rows where <code>var</code> is equal to the current element of <code>census_match_cat_counts</code>, designated by <code>.x</code>. We then remove the <code>var</code> column from the data object using <code>select(var)</code>, and we <code>rename()</code> the two remaining columns. In order rename column <code>cat</code> to <code>.x</code>, we must unquote the <code>.x</code> element using <code>!!</code> and then employ the NSE operator <code>:=</code> instead of the conventional <code>=</code> sign.</p>
-<p><code>map()</code> returns a list containing four separate data frames containing census target counts, one for each demographic variable. We name the elements of this list using <code>stats::setNames()</code>. The names are drawn from a four-element character vector that combines the elements of <code>var_order_census_match</code> with the suffix <code>&quot;_census&quot;</code>, concatenated with <code>str_c()</code>. Then we use <code>base::list2env()</code> to extract the four data frames into the global environment.</p>
+<p>Within <code>map()</code>, an anonymous function is defined wherein the table of census target counts <code>census_match_cat_counts</code> created in the previous snippet is piped into <code>dplyr::filter()</code>, which selects only the rows for which the predicate <code>var == all_of(.x)</code> returns <code>TRUE</code>. That is, it selects rows where <code>var</code> is equal to the current element of <code>census_match_cat_counts</code>, designated by <code>.x</code>. We then remove the <code>var</code> column from the data object using <code>select(-var)</code>, and we <code>rename()</code> the two remaining columns. In order rename column <code>cat</code> to <code>.x</code>, we must unquote the <code>.x</code> element using <code>!!</code> and then employ the NSE operator <code>:=</code> instead of the conventional <code>=</code> sign.</p>
+<p><code>map()</code> returns a list containing four separate data frames containing census target counts. We name the elements of this list using <code>stats::setNames()</code>. The names are drawn from a four-element character vector that combines the elements of <code>var_order_census_match</code> with the suffix <code>&quot;_census&quot;</code>, concatenated with <code>str_c()</code>. Then we use <code>base::list2env()</code> to extract the four data frames into the global environment.</p>
 <pre class="r"><code>var_order_census_match %&gt;%
   map(
     ~ census_match_cat_count %&gt;%
@@ -524,6 +524,28 @@ input_demo_wts &lt;- bind_cols(
   ) %&gt;%
   setNames(str_c(var_order_census_match, &quot;_census&quot;)) %&gt;%
   list2env(envir = .GlobalEnv)</code></pre>
+<p>The first step in using the <code>survey</code> package is calling <code>survey::svydesign()</code>, which processes the input data to create a survey object (here named <code>unweighted_survey_object</code>). The survey object is a list that includes the input data frame (via the argument <code>data = original_input_</code>) and other R objects needed by various functions in the <code>survey</code> package. <code>ids =</code> is a required argument specifying clusters in the input, here the forumula <code>~1</code> indicates no clusters. <code>weights = NULL</code> indicates that there are no pre-existing survey weights in the data.</p>
+<pre class="r"><code>unweighted_survey_object &lt;- svydesign(ids = ~1, 
+                                      data = original_input, 
+                                      weights = NULL)</code></pre>
+<p>Recall that our goal in using the <code>survey</code> package is to generate demographic weighting multipliers that allow us to adjust data from samples that do not match the demographic composition of the U.S. census. To do this we need to <em>rake</em> our input data against the census target counts for the four demographic varibles. Raking (invoked by calling <code>survey::rake()</code>) is the analytic step by which we derive multipliers that allow the cases in our input sample to have the numerical impact that they would if the input demographic counts matched the census counts.</p>
+<p>Like <code>svydesign()</code>, <code>rake()</code> returns a list of objects that can be used by other <code>survey</code> functions. The first input to <code>rake()</code> is the survey design object created in the previous step, specified here by the argument <code>design = unweighted_survey_object</code>. The next input is the sample margins; that is, the unweighted demographic counts of the four variables of interest, from our input file <code>original_input</code>. This data frame is contained in <code>unweighted_survey_object</code>, and we extract the four counts with the argument <code>sample.margins = list(~gender, ~educ, ~ethnic, ~region)</code>, prepending the formula shorthand <code>~</code> to the name of each variable. The final input is the target census counts, or population margins. These counts are drawn from the four separate data frames that we created upstream, via the argument <code>population.margins = list(gender_census, educ_census, ethnic_census, region_census)</code>.</p>
+<pre class="r"><code>rake_original_input &lt;- rake(design = unweighted_survey_object,
+                              sample.margins = list(~gender, ~educ, ~ethnic, ~region),
+                              population.margins = list(gender_census, educ_census, 
+                                                        ethnic_census, region_census))</code></pre>
+<p>We are now in a position to calculate the demographic weighting multipliers for each case in our input sample. Recall that each case can be classified by which possible crossing of the four demographic variables (e.g., <em>female</em> X <em>high-school diploma</em> X <em>hispanic</em> X <em>south region</em>) it falls into. Each of these possible crossings is associated with a unique demographic weighting multiplier, which is a function of the level of divergence between the unweighted input count of that crossing, and the target count from the U.S. census.</p>
+<p>We can create a data frame with case-wise demographic multipliers using <code>dplyr::bind_cols()</code>, which joins input columns side-by-side, without matching by an index term. We start with the input data set, which we pluck from the raked object <code>rake_original_input</code> by subsetting <code>[[]]</code> the element <code>&quot;variables&quot;</code>. To this we bind the <code>&quot;prob&quot;</code> element from <code>rake_original_input</code>, which we convert into a column by wrapping it in <code>base::data.frame()</code>. The <code>&quot;prob&quot;</code> column holds the sampling probabilities associated with the input demographic counts, which are not themselves weighting multipliers, but are an expression of the divergence between the input sample demographics and the census targets. Finally, we bind a new column <code>demo_wt</code> that holds the actual case-wise weighting multipliers. These are extracted from <code>rake_original_input</code> by calling <code>survey::weights()</code>.</p>
+<p>The remainder of this snippet restructures, relables, and sorts this new data frame <code>input_demo_wts</code> containing the case-wise weighting multiplers), by applying <code>dplyr</code> functions as described previously.</p>
+<pre class="r"><code>input_demo_wts &lt;- bind_cols(
+  rake_original_input[[&quot;variables&quot;]],  
+  data.frame(rake_original_input[[&quot;prob&quot;]]), 
+  data.frame(demo_wt = weights(rake_original_input))
+) %&gt;% 
+  rename(samp_prob = rake_original_input...prob...) %&gt;% 
+  mutate(ratio = samp_prob / demo_wt) %&gt;% 
+  select(ID:clin_status, samp_prob, demo_wt, ratio, everything()) %&gt;% 
+  arrange(desc(samp_prob))</code></pre>
 <p><br></p>
 <p><br></p>
 <p><br></p>
