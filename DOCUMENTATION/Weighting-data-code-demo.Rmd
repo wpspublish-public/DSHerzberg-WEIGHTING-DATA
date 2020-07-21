@@ -139,13 +139,15 @@ input_demo_wts <- bind_cols(
   mutate(ratio = samp_prob / demo_wt) %>% 
   select(ID:clin_status, samp_prob, demo_wt, ratio, everything()) %>% 
   arrange(desc(samp_prob))
+
+rm(list = ls(pattern = "_census|object|rake"))
 ```
 
 
 <br>
 
 ###### COMMENTED SNIPPETS
-The `survey` package requires as input the census target counts for the four key demographic variables. We can obtain these counts from `census_match_input`, one of the data files read in upstream, because it has the same number of cases as the file to be weighted `original_input`.
+The `survey` package requires as input the census target counts for the four key demographic variables. We can obtain these counts from `census_match_input`, one of the data files read in upstream, because it has the same number of cases as `original_input` (the file needing demographic weights).
 
 In the next snippet, we use `purrr::map_df()` to iterate over the character vector `var_order_census_match`, which contains the names of the four demographic variables. `map_df()` returns a data frame as output (instead of a list). The code within `map_df()` will be executed once for each element of `var_order_census_match`, and that element is substituted into the code wherever the token `.x` appears.
 
@@ -160,27 +162,74 @@ To prepare the census target counts for the `survey` package, we need to split t
 
 Within `map()`, an anonymous function is defined wherein the table of census target counts `census_match_cat_counts` created in the previous snippet is piped into `dplyr::filter()`, which selects only the rows for which the predicate `var == all_of(.x)` returns `TRUE`. That is, it selects rows where `var` is equal to the current element of `census_match_cat_counts`, designated by `.x`. We then remove the `var` column from the data object using `select(-var)`, and we `rename()` the two remaining columns. In order rename column `cat` to `.x`, we must unquote the `.x` element using `!!` and then employ the NSE operator `:=` instead of the conventional `=` sign.
 
-`map()` returns a list containing four separate data frames containing census target counts. We name the elements of this list using `stats::setNames()`. The names are drawn from a four-element character vector that combines the elements of `var_order_census_match` with the suffix `"_census"`, concatenated with `str_c()`. Then we use `base::list2env()` to extract the four data frames into the global environment.
+`map()` returns a list whose elements are the four separate data frames containing census target counts. We name the elements of this list using `stats::setNames()`. The names are drawn from a four-element character vector that combines the elements of `var_order_census_match` with the suffix `"_census"`, concatenated with `str_c()`. Then we use `base::list2env()` to extract the four data frames into the global environment.
 ```{r weights, echo = 13:21, eval = F}
 ```
-The first step in using the `survey` package is calling `survey::svydesign()`, which processes the input data to create a survey object (here named `unweighted_survey_object`). The survey object is a list that includes the input data frame (via the argument `data = original_input_`) and other R objects needed by various functions in the `survey` package. `ids =` is a required argument specifying clusters in the input, here the forumula `~1` indicates no clusters. `weights = NULL` indicates that there are no pre-existing survey weights in the data.
+To use the `survey` package, we first call `survey::svydesign()`, which processes the input data to create a survey object (here named `unweighted_survey_object`). The survey object is a list that includes the input data frame (via the argument `data = original_input`) and other R objects needed by various functions in the `survey` package. `ids =` is a required argument specifying clusters in the input (here the forumula `~1` indicates no clusters). `weights = NULL` indicates that there are no pre-existing survey weights in the data.
 ```{r weights, echo = 23:25, eval = F}
 ```
-Recall that our goal in using the `survey` package is to generate demographic weighting multipliers that allow us to adjust data from samples that do not match the demographic composition of the U.S. census. To do this we need to _rake_ our input data against the census target counts for the four demographic varibles. Raking (invoked by calling `survey::rake()`) is the analytic step by which we derive multipliers that allow the cases in our input sample to have the numerical impact that they would if the input demographic counts matched the census counts.
+Recall that our goal in using the `survey` package is to generate demographic weighting multipliers that allow us to adjust data from samples that do not match the demographic composition of the U.S. census. To do this we need to _rake_ our input data against the census target counts for the four demographic varibles. Raking (invoked by calling `survey::rake()`) is the analytic step by which the demographic proportions in the input data are fitted to the target census proportions.
 
 Like `svydesign()`, `rake()` returns a list of objects that can be used by other `survey` functions. The first input to `rake()` is the survey design object created in the previous step, specified here by the argument `design = unweighted_survey_object`. The next input is the sample margins; that is, the unweighted demographic counts of the four variables of interest, from our input file `original_input`. This data frame is contained in `unweighted_survey_object`, and we extract the four counts with the argument `sample.margins = list(~gender, ~educ, ~ethnic, ~region)`, prepending the formula shorthand `~` to the name of each variable. The final input is the target census counts, or population margins. These counts are drawn from the four separate data frames that we created upstream, via the argument `population.margins = list(gender_census, educ_census, ethnic_census, region_census)`.
 ```{r weights, echo = 27:30, eval = F}
 ```
-We are now in a position to calculate the demographic weighting multipliers for each case in our input sample. Recall that each case can be classified by which possible crossing of the four demographic variables (e.g., _female_ X _high-school diploma_ X _hispanic_ X _south region_) it falls into. Each of these possible crossings is associated with a unique demographic weighting multiplier, which is a function of the level of divergence between the unweighted input count of that crossing, and the target count from the U.S. census.
+We can now calculate the demographic weighting multipliers for each case in our input sample. The `survey` package derives a unique multiplier for each possible crossing of the four demographic variables. There are 160 possible crossings (2 `gender` categories X 4 `educ` categories X 5 `ethnic` categories X 4 `region` categories), and each case is classified into one and only one crossing. Each crossing is associated with a unique demographic weighting multiplier, which is a function of the difference between the unweighted input count of that crossing (e.g., how many indviduals in _female_ X _high-school diploma_ X _hispanic_ X _south region_ cell), and the target count from the U.S. census.
 
-We can create a data frame with case-wise demographic multipliers using `dplyr::bind_cols()`, which joins input columns side-by-side, without matching by an index term. We start with the input data set, which we pluck from the raked object `rake_original_input` by subsetting `[[]]` the element `"variables"`. To this we bind the `"prob"` element from `rake_original_input`, which we convert into a column by wrapping it in `base::data.frame()`. The `"prob"` column holds the sampling probabilities associated with the input demographic counts, which are not themselves weighting multipliers, but are an expression of the divergence between the input sample demographics and the census targets. Finally, we bind a new column `demo_wt` that holds the actual case-wise weighting multipliers. These are extracted from `rake_original_input` by calling `survey::weights()`.
+We can create a new data frame `input_demo_wts` with case-wise demographic multipliers using `dplyr::bind_cols()`, which joins input columns side-by-side, without matching by an index term. We start with the input data set, which we pluck from the raked object `rake_original_input` by subsetting `[[]]` the element `"variables"`. To this we bind the `"prob"` element from `rake_original_input`, which we convert into a column by wrapping it in `base::data.frame()`. The `"prob"` column holds the sampling probabilities associated with the input demographic counts, which are not themselves weighting multipliers, but are an expression of the divergence between the input sample demographics and the census targets. Finally, we bind a new column `demo_wt` that holds the actual case-wise weighting multipliers. These are extracted from `rake_original_input` by calling `survey::weights()`.
 
-The remainder of this snippet restructures, relables, and sorts this new data frame `input_demo_wts` containing the case-wise weighting multiplers), by applying `dplyr` functions as described previously.
-```{r weights, echo = 32:40, eval = F}
+The remainder of this snippet restructures, relables, and sorts this new data frame `input_demo_wts` containing the case-wise weighting multiplers), by applying `dplyr` functions as described previously. It then cleans up the environment by removing unneeded objects.
+```{r weights, echo = 32:42, eval = F}
 ```
+
 <br>
 
+#### Apply multipliers to input data, save files for downstream analysis
 
+###### RUNNABLE CODE
+
+```{r apply-weights, eval = F}
+unweighted_output <- input_demo_wts %>% 
+  select(-c(samp_prob, ratio)) %>%
+  rename_with(~ str_c("i", str_pad(
+    as.character(1:50), 2, side = "left", pad = "0"), "_uw"), 
+    i01:i50) %>% 
+  mutate(
+    TOT_raw_unweight = rowSums(.[str_c("i", str_pad(
+      as.character(1:50), 2, side = "left", pad = "0"), "_uw")])
+  ) %>% 
+  relocate(TOT_raw_unweight, .after = demo_wt)
+
+write_csv(
+  unweighted_output,
+  here(
+    "OUTPUT-FILES/unweighted-data-for-analysis.csv" 
+  ),
+  na = ""
+)
+
+ID_weights <- unweighted_output %>% 
+  select(ID, demo_wt)
+
+weighted_output <- original_input %>%
+  left_join(ID_weights, by = "ID") %>%
+  rename_with(~ str_c("i", str_pad(
+    as.character(1:50), 2, side = "left", pad = "0"
+  ), "_w"),
+  i01:i50) %>%
+  mutate(across(c(i01_w:i50_w),
+                ~ . * demo_wt)) %>%
+  mutate(TOT_raw_weight = rowSums(.[str_c("i", str_pad(as.character(1:50), 2, 
+                                                       side = "left", pad = "0"), "_w")])) %>% 
+  relocate(demo_wt, TOT_raw_weight, .before = i01_w)
+
+write_csv(
+  weighted_output,
+  here(
+    "OUTPUT-FILES/weighted-data-for-analysis.csv" 
+  ),
+  na = ""
+)
+```
 
 <br>
 

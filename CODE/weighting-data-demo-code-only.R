@@ -63,7 +63,6 @@ rake_original_input <- rake(design = unweighted_survey_object,
                               population.margins = list(gender_census, educ_census, 
                                                         ethnic_census, region_census))
 
-# bind demo weights to original input data
 input_demo_wts <- bind_cols(
   rake_original_input[["variables"]],  
   data.frame(rake_original_input[["prob"]]), 
@@ -80,7 +79,7 @@ rm(list = ls(pattern = "_census|object|rake"))
 
 # In the unweighted data set, item responses do not have weighting multipliers
 # applied; item names have `_uw` suffix.
-unweighted_input <- input_demo_wts %>% 
+unweighted_output <- input_demo_wts %>% 
   select(-c(samp_prob, ratio)) %>%
   rename_with(~ str_c("i", str_pad(
     as.character(1:50), 2, side = "left", pad = "0"), "_uw"), 
@@ -95,7 +94,7 @@ unweighted_input <- input_demo_wts %>%
 # total score. This may be needed for some types of downstream analysis.
 
 write_csv(
-  unweighted_input,
+  unweighted_output,
   here(
     "OUTPUT-FILES/unweighted-data-for-analysis.csv" 
   ),
@@ -103,12 +102,12 @@ write_csv(
 )
 
 # Extract demo weights to create a weighted data set.
-ID_weights <- unweighted_input %>% 
+ID_weights <- unweighted_output %>% 
   select(ID, demo_wt)
 
 # In the weighted data set, each item score has its case's weighting multiplier
 # applied; item names have `_w` suffix.
-weighted_input <- original_input %>%
+weighted_output <- original_input %>%
   left_join(ID_weights, by = "ID") %>%
   rename_with(~ str_c("i", str_pad(
     as.character(1:50), 2, side = "left", pad = "0"
@@ -125,7 +124,7 @@ weighted_input <- original_input %>%
 # total score. This may be needed for some types of downstream analysis.
 
 write_csv(
-  weighted_input,
+  weighted_output,
   here(
     "OUTPUT-FILES/weighted-data-for-analysis.csv" 
   ),
