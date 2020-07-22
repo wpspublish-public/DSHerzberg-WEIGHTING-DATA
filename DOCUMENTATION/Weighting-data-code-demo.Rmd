@@ -7,7 +7,7 @@ output: html_document
 knitr::opts_chunk$set(echo = TRUE)
 ```
 
-### Overview
+### 1. Overview
 
 To develop norms for tests and behavior rating scales, we collect nationwide samples comprised of data from many thousands of persons. Our intent is to have the demographic makeup of these samples match the U.S. census proportions, as closely as possible. The demographic variables of interest are age, gender, (parent) education level, race/ethnicity, and U.S. geographic region.
 
@@ -30,7 +30,7 @@ In practice this would work as follows. Suppose that the previously mentioned de
 
 To recount, we can use this weighting method to adjust the values of the data in our collected sample, so that the sample statistics would be similar to those obtained from a sample that exactly matched the U.S. Census demographic proportions.
 
-### Code Demonstration
+### 2. Demonstration of Method
 
 #### Load packages, specify input parameters, read data
 
@@ -177,13 +177,15 @@ We can now calculate the demographic weighting multipliers for each case in our 
 
 We can create a new data frame `input_demo_wts` with case-wise demographic multipliers using `dplyr::bind_cols()`, which joins input columns side-by-side, without matching by an index term. We start with the input data set, which we pluck from the raked object `rake_original_input` by subsetting `[[]]` the element `"variables"`. To this we bind the `"prob"` element from `rake_original_input`, which we convert into a column by wrapping it in `base::data.frame()`. The `"prob"` column holds the sampling probabilities associated with the input demographic counts, which are not themselves weighting multipliers, but are an expression of the divergence between the input sample demographics and the census targets. Finally, we bind a new column `demo_wt` that holds the actual case-wise weighting multipliers. These are extracted from `rake_original_input` by calling `survey::weights()`.
 
-The remainder of this snippet restructures, relables, and sorts this new data frame `input_demo_wts` containing the case-wise weighting multiplers), by applying `dplyr` functions as described previously. It then cleans up the environment by removing unneeded objects.
+The remainder of this snippet restructures, relabels, and sorts this new data frame `input_demo_wts` containing the case-wise weighting multiplers, by applying `dplyr` functions as described previously. It then cleans up the environment by removing unneeded objects. Within `rm()`, the `pattern =` argument contains string elements separated by the logical _or_ operator `|`, so that objects whose names contain _any_ of these elements will be removed.
 ```{r weights, echo = 32:42, eval = F}
 ```
 
 <br>
 
-#### Apply multipliers to input data, save files for downstream analysis
+#### Apply multipliers to input data, write files for downstream analysis
+
+This section creates separate output files for unweighted and weighted data.
 
 ###### RUNNABLE CODE
 
@@ -233,139 +235,35 @@ write_csv(
 
 <br>
 
-<br>
-
-<br>
-
-<br>
-
-<br>
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-#### Compare demographic counts to census targets
-
-Running the next code chunk yields a table `freq_demos_comp` that compares the demographic counts of the unweighted input to the target proportions of the U.S. Census (which are captured in the vectors with the suffix `_census`). `freq_demos_comp` is sorted by the right-most column `diff_pct`, which expresses the difference between the unweighted input and the census target, in the sample percentages for each demographic category.
-
-The table shows, for example, that the `female-no_HS-hispanic-northeast` cell is the most under-represented cell in the input, whereas the `male-BA_plus-white-midwest` cell is the most over-represented. By contrast, the input sample is closer to the census proportions for blacks or asians of either gender from the `south` or `west`, with educational levels of `HS_grad` or  `some_college`.
-
-By the logic expressed previously, I would therefore expect to require a demographic weighting multiplier greater than 1 for cases in the `female-no_HS_hispanic_northeast` cell, and a multiplier less than 1 for cases in the `male-BA_plus-white-midwest` cell.
-```{r demo-counts, eval=FALSE}
-var_order <- c("age", "age_range", "gender", "educ", "ethnic", "region", "clin_status")
-
-cat_order <- c(
-  # age
-  NA, "5", "6", "7", "8", "9", "10", "11", "12",
-  # age_range
-  NA, "5 to 8 yo", "9 to 12 yo", 
-  # Gender
-  NA, "male", "female",
-  # educ
-  NA, "no_HS", "HS_grad", "some_college", "BA_plus",
-  # Ethnicity
-  NA, "hispanic", "asian", "black", "white", "other",
-  # Region
-  NA, "northeast", "south", "midwest", "west")
-
-gender_census <- tibble(cat = c("female", "male"),
-                        Freq = nrow(unweighted_input)*c(0.53, 0.47))
-educ_census <- tibble(cat = c("no_HS", "HS_grad", "some_college", "BA_plus"),
-                      Freq = nrow(unweighted_input)*c(0.119, 0.263, 0.306, 0.311))
-ethnic_census <- tibble(cat = c("hispanic", "asian", "black", "white", "other"),
-                        Freq = nrow(unweighted_input)*c(0.239, 0.048, 0.136, 0.521, .056))
-region_census <- tibble(cat = c("northeast", "south", "midwest", "west"),
-                        Freq = nrow(unweighted_input)*c(0.166, 0.383, 0.212, 0.238))
-
-freq_demos_unweighted <- unweighted_input %>%
-  pivot_longer(age_range:clin_status, names_to = 'var', values_to = 'cat') %>%
-  group_by(var, cat) %>%
-  count(var, cat) %>%
-  arrange(match(var, var_order), match(cat, cat_order)) %>%
-  ungroup() %>%
-  mutate(
-   pct_samp = round(((n / nrow(unweighted_input)) * 100), 1)
-  ) %>%
-  select(var, cat, n, pct_samp) %>% 
-  full_join(region_census, by = "cat")
-
-list_demos <- list(freq_demos_unweighted, gender_census, educ_census, 
-                   ethnic_census, region_census)
-
-freq_demos_comp <- list_demos %>% 
-  reduce(left_join, by = "cat") %>% 
-  filter(!(var %in% c("age_range", "clin_status"))) %>% 
-  unite(census_count, c(Freq.x, Freq.y, Freq.x.x, Freq.y.y), sep = "", remove = T) %>% 
-  mutate_at(vars(census_count), ~as.integer(str_replace_all(., "NA", ""))) %>% 
-  mutate(census_pct = 100 * round(census_count/nrow(unweighted_input), 3),
-         diff_pct = census_pct - pct_samp
-         ) %>% 
-  rename(input_count = n, input_pct = pct_samp) %>% 
-  select(var, cat, input_count, census_count, input_pct, census_pct, diff_pct) %>% 
-  arrange(desc(diff_pct))
-
-rm(list = setdiff(ls(), ls(pattern = "input|comp|list")))
-
-list_census <- list(list_demos[2:5],
-     c("gender", "educ", "ethnic", "region")) %>%
-  pmap(~ ..1 %>%
-         rename_at(vars(cat), ~str_replace(., "cat", !!..2))
-  )
-
-names(list_census) <- c("gender_census", "educ_census", "ethnic_census", "region_census")
-
-list2env(list_census, envir=.GlobalEnv)
+###### COMMENTED SNIPPETS
+It may be useful for some downstream analyses to have access to the original unweighted input data. We initialize `unweighted_output` to hold these data, starting the pipeline with `input_demo_weights`. We use `select()` to drop columns not needed in the output
+```{r apply-weights, echo = 1:2, eval = F}
 ```
+We use `dplyr::rename_with()` to rename the item columns. The first argument of `rename_with()` is a function (designated with `~`) to apply new names to on a certain subset of columns. Here, we start with `as.character(1:50)` which coerces the sequence of integers from 1 to 50 into a character vector (so that we can use string functions with those elements). We use `stringr::str_pad()` to pad the elements with zeros `pad = "0"` on the `side = "left"`, so that all elements are represented by two characters (e.g., 01, 02, 03, etc.), This expression is then wrapped in `stringr::str_c()`, to prepend `"i"` and append `"_uw"`, the later indicating that the item scores are unweighted. The second argument of `rename_with()` specifies that `i01:i50` are the columns to be renamed.
+```{r apply-weights, echo = 3:5, eval = F}
+```
+We use `mutate()` and `base::rowSums()` to caculate a total score `TOT_raw_unweight`, the sum of the 50 unweighted item scores. Within `rowSums()`, we use the `.[]` shorthand to select columns to sum within the piped data object. Because `rowSums()` is not a `tidyverse` function, the target columns need to be identified by a character vector returned by the same string function used upstream within `rename_with()`. We arrange the columns in the desired sequence using `relocate()`.
+```{r apply-weights, echo = 6:9, eval = F}
+```
+We write the ouput to _.csv_ using `readr::write_csv()`.
+```{r apply-weights, echo = 11:18, eval = F}
+```
+We now create a weighted data set `weighted_output` and write it to _.csv_ for analysis. The first step is to use `select()` to extract the case-wise demographic weighting multipliers from `unweighted_output`.
+```{r apply-weights, echo = 20:21, eval = F}
+```
+We then join these multipliers to the `original_input` data frame using `dplyr::left_join()`, designating `by = "ID"` as the index variable to ensure proper alignment of columns. We `rename_with()` the item columns using a function similar to that described previously, but this time appending `"_w"` to indicate that the item scores are weighted.
+```{r apply-weights, echo = 22:28, eval = F}
+```
+We use separate calls of `mutate()` to first apply weighting multipliers to the item scores, and then to calculate a weighted total raw score. Within `across()`, the target columns are specified `c(i01_w:i50_w)`, and a function `~` is applied, with the `.` shorthand indicating that the value of `demo_wt` is to be multiplied by the item score contained in each of the target columns. These weighted item scores are then processed by `rowSums()` to yield the total score `TOT_raw_weight`. Note the difference between how the same target columns are specified within `across()` and `rowSums()`. Because `across()` is a `tidyverse` function, it can use the brief expression `i01_w:i50_w` to subset the columns, as opposed to `rowSums()`, which requires a more verbose string function.
+```{r apply-weights, echo = 29:32, eval = F}
+```
+<br>
 
 <br>
 
-#### Implement survey functions
+<br>
 
-We now use functions from the Survey package to first create a survey object based on the unweighted input data, then to rake that object against the census targets for `gender`, `educ`, `ethnic`, and `region`. In examining the resulting `rake_unweighted_input` object, I found the `prob` vector, which appears to contain the case-wise weights generated by the raking procedure. I labeled that vector `demot_wt`, bound it to the unweighted input data in the data frame`input_demo_wts`, and sorted that data frame by the `demo_wt` column.
-```{r survey-funs, eval=FALSE}
-unweighted_survey_object <- svydesign(ids = ~1, 
-                                     data = unweighted_input, 
-                                     weights = NULL)
+<br>
 
-rake_unweighted_input <- rake(design = unweighted_survey_object,
-                          sample.margins = list(~gender, ~educ, ~ethnic, ~region),
-                          population.margins = list(gender_census, educ_census, 
-                                                    ethnic_census, region_census))
+### 3. Reality Check
 
-input_demo_wts <- bind_cols(
-  rake_unweighted_input[["variables"]], 
-  data.frame(rake_unweighted_input[["prob"]])
-  ) %>% 
-  rename(demo_wt = rake_unweighted_input...prob...) %>% 
-  select(ID:clin_status, demo_wt, everything()) %>% 
-  arrange(desc(demo_wt))
-
-tail(input_demo_wts)
-
-filter(input_demo_wts, between(demo_wt, .98, 1.02))
-
-head(input_demo_wts)
-```
-The values in the `demo_wt` column at first glance appear to have the expected relationship with the demographic classifcations of their associated rows. For example, the `demo_wt` value of `0.163` associated with the the `female-no_HS_hispanic_northeast` classification is relatively distant from 1, as we can see from calling `tail(input_demo_wts)`.
-
-When we examine the values of `demo_wt` clustered around 1 by calling `filter(input_demo_wts, between(demo_wt, .98, 1.02))`,  we see primarily the expected demographic categories of `HS_grad`, `black`, and `south`.
-
-Here is where I run up against the limit of my understanding of the Survey functions and the output of `rake()`. Because the `female-no-HS-hispanic-northeast` cell is under-sampled relative to the census target, I would expect the `demo_wt` value to be _greater_ than 1, by the logic I described previously. That is, the impact of the existing cases in that cell on the sample statistics would need to be magnified by a multiplier greater than 1, to offset the fact that there are fewer cases in that cell than required by the census targets.
-
-The fact that `demo_wt` is _less_ than 1 for the `female-no_HS-hispanic-northeast` cell is counter-intuitive to me. It seems like an inversion of what the value should be. This seeming inversion is present throughout the rows of `input_demo_wts`. Calling `head(input_demo_wts)` reveals that cases from the over-sampled crossing of `BA_plus` and `midwest` are associated with a `demo_wt` of `2.167`. This again is counter-intuitive; I would expect a `demo_wt` less than 1, to reduce the impact of these over-sampled categories on the sample statistics.
-
-What to make of this? It seems that the values of the `prob` vector (my `demo_wt` column) are in fact describing the demographic distribution of the unweighted input sample. Specifically, it seems that these values represent the level of under- or oversampling- of each crossing of `gender`, `educ`, `ethnic`, and `region`, relative to the census targets for those crossings.
-
-If I'm understanding this correctly, these `demo_wt` values cannot serve as demographic weighting multipliers in the manner that I described above in the __Problem Statement__ section. I suspect that the `demo_wt` values have a linear relationship with the multipliers I am seeking, but I'm unsure how to make the mathematical transformation. Or perhaps my desired multipliers are lurking in another function within the Survey package.
-
-This is as far as I've taken it before reaching out to you for help. I'm grateful for your interest in helping with this problem. Thank you again, and please let me know if/when we get into a realm where it would make sense to convert this exchange into a paid consulting engagement. I'm sure we can work out payment and taxation.

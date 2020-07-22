@@ -75,10 +75,6 @@ input_demo_wts <- bind_cols(
 
 rm(list = ls(pattern = "_census|object|rake"))
 
-# apply weights and calculate raw scores
-
-# In the unweighted data set, item responses do not have weighting multipliers
-# applied; item names have `_uw` suffix.
 unweighted_output <- input_demo_wts %>% 
   select(-c(samp_prob, ratio)) %>%
   rename_with(~ str_c("i", str_pad(
@@ -87,7 +83,7 @@ unweighted_output <- input_demo_wts %>%
   mutate(
     TOT_raw_unweight = rowSums(.[str_c("i", str_pad(
       as.character(1:50), 2, side = "left", pad = "0"), "_uw")])
-  ) %>% 
+  ) %>%
   relocate(TOT_raw_unweight, .after = demo_wt)
 
 # write an output file with demo weights, unweighted item scores, and unweighted
@@ -107,7 +103,7 @@ ID_weights <- unweighted_output %>%
 
 # In the weighted data set, each item score has its case's weighting multiplier
 # applied; item names have `_w` suffix.
-weighted_output <- original_input %>%
+weighted_output1 <- original_input %>%
   left_join(ID_weights, by = "ID") %>%
   rename_with(~ str_c("i", str_pad(
     as.character(1:50), 2, side = "left", pad = "0"
