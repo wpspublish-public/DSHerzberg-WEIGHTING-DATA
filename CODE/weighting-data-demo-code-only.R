@@ -81,13 +81,9 @@ unweighted_output <- input_demo_wts %>%
     as.character(1:50), 2, side = "left", pad = "0"), "_uw"), 
     i01:i50) %>% 
   mutate(
-    TOT_raw_unweight = rowSums(.[str_c("i", str_pad(
-      as.character(1:50), 2, side = "left", pad = "0"), "_uw")])
-  ) %>%
+    TOT_raw_unweight = rowSums(.[grep("*_uw", names(.))]
+  )) %>%
   relocate(TOT_raw_unweight, .after = demo_wt)
-
-# write an output file with demo weights, unweighted item scores, and unweighted
-# total score. This may be needed for some types of downstream analysis.
 
 write_csv(
   unweighted_output,
@@ -97,27 +93,18 @@ write_csv(
   na = ""
 )
 
-# Extract demo weights to create a weighted data set.
-ID_weights <- unweighted_output %>% 
-  select(ID, demo_wt)
-
-# In the weighted data set, each item score has its case's weighting multiplier
-# applied; item names have `_w` suffix.
-weighted_output1 <- original_input %>%
-  left_join(ID_weights, by = "ID") %>%
+weighted_outputB <- original_input %>%
+  left_join(unweighted_output[c("ID", "demo_wt")], by = "ID") %>%
   rename_with(~ str_c("i", str_pad(
     as.character(1:50), 2, side = "left", pad = "0"
   ), "_w"),
   i01:i50) %>%
   mutate(across(c(i01_w:i50_w),
                 ~ . * demo_wt)) %>%
-  mutate(TOT_raw_weight = rowSums(.[str_c("i", str_pad(as.character(1:50), 2, 
-                                                       side = "left", pad = "0"), "_w")])) %>% 
+  mutate(
+    TOT_raw_weight = rowSums(.[grep("*_w$", names(.))]
+    )) %>%
   relocate(demo_wt, TOT_raw_weight, .before = i01_w)
-
-
-# write an output file with demo weights, weighted item scores, and weighted
-# total score. This may be needed for some types of downstream analysis.
 
 write_csv(
   weighted_output,

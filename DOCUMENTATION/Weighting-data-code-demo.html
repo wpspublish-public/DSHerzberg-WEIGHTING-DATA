@@ -564,9 +564,8 @@ rm(list = ls(pattern = &quot;_census|object|rake&quot;))</code></pre>
     as.character(1:50), 2, side = &quot;left&quot;, pad = &quot;0&quot;), &quot;_uw&quot;), 
     i01:i50) %&gt;% 
   mutate(
-    TOT_raw_unweight = rowSums(.[str_c(&quot;i&quot;, str_pad(
-      as.character(1:50), 2, side = &quot;left&quot;, pad = &quot;0&quot;), &quot;_uw&quot;)])
-  ) %&gt;% 
+    TOT_raw_unweight = rowSums(.[grep(&quot;*_uw&quot;, names(.))]
+  )) %&gt;%
   relocate(TOT_raw_unweight, .after = demo_wt)
 
 write_csv(
@@ -577,19 +576,17 @@ write_csv(
   na = &quot;&quot;
 )
 
-ID_weights &lt;- unweighted_output %&gt;% 
-  select(ID, demo_wt)
-
 weighted_output &lt;- original_input %&gt;%
-  left_join(ID_weights, by = &quot;ID&quot;) %&gt;%
+  left_join(unweighted_output[c(&quot;ID&quot;, &quot;demo_wt&quot;)], by = &quot;ID&quot;) %&gt;%
   rename_with(~ str_c(&quot;i&quot;, str_pad(
     as.character(1:50), 2, side = &quot;left&quot;, pad = &quot;0&quot;
   ), &quot;_w&quot;),
   i01:i50) %&gt;%
   mutate(across(c(i01_w:i50_w),
                 ~ . * demo_wt)) %&gt;%
-  mutate(TOT_raw_weight = rowSums(.[str_c(&quot;i&quot;, str_pad(as.character(1:50), 2, 
-                                                       side = &quot;left&quot;, pad = &quot;0&quot;), &quot;_w&quot;)])) %&gt;% 
+  mutate(
+    TOT_raw_weight = rowSums(.[grep(&quot;*_w$&quot;, names(.))]
+    )) %&gt;%
   relocate(demo_wt, TOT_raw_weight, .before = i01_w)
 
 write_csv(
@@ -610,12 +607,12 @@ write_csv(
 <pre class="r"><code>  rename_with(~ str_c(&quot;i&quot;, str_pad(
     as.character(1:50), 2, side = &quot;left&quot;, pad = &quot;0&quot;), &quot;_uw&quot;), 
     i01:i50) %&gt;% </code></pre>
-<p>We use <code>mutate()</code> and <code>base::rowSums()</code> to caculate a total score <code>TOT_raw_unweight</code>, the sum of the 50 unweighted item scores. Within <code>rowSums()</code>, we use the <code>.[]</code> shorthand to select columns to sum within the piped data object. Because <code>rowSums()</code> is not a <code>tidyverse</code> function, the target columns need to be identified by a character vector returned by the same string function used upstream within <code>rename_with()</code>. We arrange the columns in the desired sequence using <code>relocate()</code>.</p>
+<p>We use <code>mutate()</code> and <code>base::rowSums()</code> to caculate a total score <code>TOT_raw_unweight</code>, the sum of the 50 unweighted item scores. Within <code>rowSums()</code>, we use the <code>.[]</code> shorthand to select columns within the piped data object to sum. Within the single brackets, we pass a character vector of the names of the columns to be summed. We do this with the expression <code>grep(&quot;*_uw&quot;, names(.))</code>. <code>base::grep()</code> finds matches to a string pattern within a character vector. The first argument <code>&quot;*_uw&quot;</code> provides the pattern as a regular expression: any character string <code>*</code> ending in <code>_uw</code>. The second argument <code>names(.)</code> indicates that <code>grep()</code> will return matching names from the vector of column names of the piped data object. Thus we pass into <code>.[]</code> a vector of the item names, and these are the columns summed to yield <code>TOT_raw_unweight</code>. We then arrange the columns in the desired sequence using <code>relocate()</code>.</p>
 <pre class="r"><code>  mutate(
-    TOT_raw_unweight = rowSums(.[str_c(&quot;i&quot;, str_pad(
-      as.character(1:50), 2, side = &quot;left&quot;, pad = &quot;0&quot;), &quot;_uw&quot;)])
-  ) %&gt;% </code></pre>
-<p>We write the ouput to <em>.csv</em> using <code>readr::write_csv()</code>.</p>
+    TOT_raw_unweight = rowSums(.[grep(&quot;*_uw&quot;, names(.))]
+  )) %&gt;%
+  relocate(TOT_raw_unweight, .after = demo_wt)</code></pre>
+<p>We write the ouput to <em>.csv</em> using <code>readr::write_csv()</code>, with the arugment <code>na = &quot;&quot;</code> indicating that any missing cells will be written as blanks.</p>
 <pre class="r"><code>write_csv(
   unweighted_output,
   here(
@@ -623,21 +620,20 @@ write_csv(
   ),
   na = &quot;&quot;
 )</code></pre>
-<p>We now create a weighted data set <code>weighted_output</code> and write it to <em>.csv</em> for analysis. The first step is to use <code>select()</code> to extract the case-wise demographic weighting multipliers from <code>unweighted_output</code>.</p>
-<pre class="r"><code>ID_weights &lt;- unweighted_output %&gt;% 
-  select(ID, demo_wt)</code></pre>
-<p>We then join these multipliers to the <code>original_input</code> data frame using <code>dplyr::left_join()</code>, designating <code>by = &quot;ID&quot;</code> as the index variable to ensure proper alignment of columns. We <code>rename_with()</code> the item columns using a function similar to that described previously, but this time appending <code>&quot;_w&quot;</code> to indicate that the item scores are weighted.</p>
+<p>We now create a weighted data set <code>weighted_output</code> and write it to <em>.csv</em> for analysis. We use <code>dplyr::left_join()</code> to join the <code>original_input</code> data frame to the case-wise demographic multipliers. The latter are passed to <code>left_join()</code> by the argument <code>unweighted_output[c(&quot;ID&quot;, &quot;demo_wt&quot;)]</code>, which uses single brackets <code>[]</code> to subset a vector of named columns from <code>unweighted_output</code>. We can use <code>by = &quot;ID&quot;</code> to designate a common indexing variable, thus ensuring proper alignment of the joined columns. We <code>rename_with()</code> the item columns using a function similar to that described previously, but this time appending <code>&quot;_w&quot;</code> to indicate that the item scores are weighted.</p>
 <pre class="r"><code>weighted_output &lt;- original_input %&gt;%
-  left_join(ID_weights, by = &quot;ID&quot;) %&gt;%
+  left_join(unweighted_output[c(&quot;ID&quot;, &quot;demo_wt&quot;)], by = &quot;ID&quot;) %&gt;%
   rename_with(~ str_c(&quot;i&quot;, str_pad(
     as.character(1:50), 2, side = &quot;left&quot;, pad = &quot;0&quot;
   ), &quot;_w&quot;),
   i01:i50) %&gt;%</code></pre>
-<p>We use separate calls of <code>mutate()</code> to first apply weighting multipliers to the item scores, and then to calculate a weighted total raw score. Within <code>across()</code>, the target columns are specified <code>c(i01_w:i50_w)</code>, and a function <code>~</code> is applied, with the <code>.</code> shorthand indicating that the value of <code>demo_wt</code> is to be multiplied by the item score contained in each of the target columns. These weighted item scores are then processed by <code>rowSums()</code> to yield the total score <code>TOT_raw_weight</code>. Note the difference between how the same target columns are specified within <code>across()</code> and <code>rowSums()</code>. Because <code>across()</code> is a <code>tidyverse</code> function, it can use the brief expression <code>i01_w:i50_w</code> to subset the columns, as opposed to <code>rowSums()</code>, which requires a more verbose string function.</p>
+<p>We use two separate calls of <code>mutate()</code> to first apply weighting multipliers to the item scores, and then to calculate a weighted total raw score. Within <code>across()</code>, the target columns are specified <code>c(i01_w:i50_w)</code>, and a function <code>~</code> is applied, with the <code>.</code> shorthand indicating that the value of <code>demo_wt</code> is to be multiplied by the item score contained in each of the target columns. These weighted item scores are then processed by <code>rowSums()</code> to yield the total score <code>TOT_raw_weight</code>. Note the difference between how the same target columns are specified within <code>across()</code> and <code>rowSums()</code>. Because <code>across()</code> is a <code>tidyverse</code> function, it can use the transparent expression <code>i01_w:i50_w</code> to subset the columns, as opposed to <code>rowSums()</code>, which requires the <code>grep()</code> call described previously. In this instance, we append <code>$</code> to the regular expression, to indicate that the sought after pattern must have no characters after <code>_w</code>. This properly excludes the column <code>demo_wt</code> from the calculation of <code>TOT_raw_weight</code>.</p>
 <pre class="r"><code>  mutate(across(c(i01_w:i50_w),
                 ~ . * demo_wt)) %&gt;%
-  mutate(TOT_raw_weight = rowSums(.[str_c(&quot;i&quot;, str_pad(as.character(1:50), 2, 
-                                                       side = &quot;left&quot;, pad = &quot;0&quot;), &quot;_w&quot;)])) %&gt;% </code></pre>
+  mutate(
+    TOT_raw_weight = rowSums(.[grep(&quot;*_w$&quot;, names(.))]
+    )) %&gt;%
+  relocate(demo_wt, TOT_raw_weight, .before = i01_w)</code></pre>
 <p><br></p>
 <p><br></p>
 <p><br></p>

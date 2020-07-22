@@ -196,9 +196,8 @@ unweighted_output <- input_demo_wts %>%
     as.character(1:50), 2, side = "left", pad = "0"), "_uw"), 
     i01:i50) %>% 
   mutate(
-    TOT_raw_unweight = rowSums(.[str_c("i", str_pad(
-      as.character(1:50), 2, side = "left", pad = "0"), "_uw")])
-  ) %>% 
+    TOT_raw_unweight = rowSums(.[grep("*_uw", names(.))]
+  )) %>%
   relocate(TOT_raw_unweight, .after = demo_wt)
 
 write_csv(
@@ -209,19 +208,17 @@ write_csv(
   na = ""
 )
 
-ID_weights <- unweighted_output %>% 
-  select(ID, demo_wt)
-
 weighted_output <- original_input %>%
-  left_join(ID_weights, by = "ID") %>%
+  left_join(unweighted_output[c("ID", "demo_wt")], by = "ID") %>%
   rename_with(~ str_c("i", str_pad(
     as.character(1:50), 2, side = "left", pad = "0"
   ), "_w"),
   i01:i50) %>%
   mutate(across(c(i01_w:i50_w),
                 ~ . * demo_wt)) %>%
-  mutate(TOT_raw_weight = rowSums(.[str_c("i", str_pad(as.character(1:50), 2, 
-                                                       side = "left", pad = "0"), "_w")])) %>% 
+  mutate(
+    TOT_raw_weight = rowSums(.[grep("*_w$", names(.))]
+    )) %>%
   relocate(demo_wt, TOT_raw_weight, .before = i01_w)
 
 write_csv(
@@ -242,20 +239,17 @@ It may be useful for some downstream analyses to have access to the original unw
 We use `dplyr::rename_with()` to rename the item columns. The first argument of `rename_with()` is a function (designated with `~`) to apply new names to on a certain subset of columns. Here, we start with `as.character(1:50)` which coerces the sequence of integers from 1 to 50 into a character vector (so that we can use string functions with those elements). We use `stringr::str_pad()` to pad the elements with zeros `pad = "0"` on the `side = "left"`, so that all elements are represented by two characters (e.g., 01, 02, 03, etc.), This expression is then wrapped in `stringr::str_c()`, to prepend `"i"` and append `"_uw"`, the later indicating that the item scores are unweighted. The second argument of `rename_with()` specifies that `i01:i50` are the columns to be renamed.
 ```{r apply-weights, echo = 3:5, eval = F}
 ```
-We use `mutate()` and `base::rowSums()` to caculate a total score `TOT_raw_unweight`, the sum of the 50 unweighted item scores. Within `rowSums()`, we use the `.[]` shorthand to select columns to sum within the piped data object. Because `rowSums()` is not a `tidyverse` function, the target columns need to be identified by a character vector returned by the same string function used upstream within `rename_with()`. We arrange the columns in the desired sequence using `relocate()`.
+We use `mutate()` and `base::rowSums()` to caculate a total score `TOT_raw_unweight`, the sum of the 50 unweighted item scores. Within `rowSums()`, we use the `.[]` shorthand to select columns within the piped data object to sum. Within the single brackets, we pass a character vector of the names of the columns to be summed. We do this with the expression `grep("*_uw", names(.))`. `base::grep()` finds matches to a string pattern within a character vector. The first argument `"*_uw"` provides the pattern as a regular expression: any character string `*` ending in `_uw`. The second argument `names(.)` indicates that `grep()` will return matching names from the vector of column names of the piped data object. Thus we pass into `.[]` a vector of the item names, and these are the columns summed to yield `TOT_raw_unweight`. We then arrange the columns in the desired sequence using `relocate()`.
 ```{r apply-weights, echo = 6:9, eval = F}
 ```
-We write the ouput to _.csv_ using `readr::write_csv()`.
-```{r apply-weights, echo = 11:18, eval = F}
+We write the ouput to _.csv_ using `readr::write_csv()`, with the arugment `na = ""` indicating that any missing cells will be written as blanks.
+```{r apply-weights, echo = 11:17, eval = F}
 ```
-We now create a weighted data set `weighted_output` and write it to _.csv_ for analysis. The first step is to use `select()` to extract the case-wise demographic weighting multipliers from `unweighted_output`.
-```{r apply-weights, echo = 20:21, eval = F}
+We now create a weighted data set `weighted_output` and write it to _.csv_ for analysis. We use `dplyr::left_join()` to join the `original_input` data frame to the case-wise demographic multipliers. The latter are passed to `left_join()` by the argument `unweighted_output[c("ID", "demo_wt")]`, which uses single brackets `[]` to subset a vector of named columns from `unweighted_output`. We can use `by = "ID"` to designate a common indexing variable, thus ensuring proper alignment of the joined columns. We `rename_with()` the item columns using a function similar to that described previously, but this time appending `"_w"` to indicate that the item scores are weighted.
+```{r apply-weights, echo = 18:24, eval = F}
 ```
-We then join these multipliers to the `original_input` data frame using `dplyr::left_join()`, designating `by = "ID"` as the index variable to ensure proper alignment of columns. We `rename_with()` the item columns using a function similar to that described previously, but this time appending `"_w"` to indicate that the item scores are weighted.
-```{r apply-weights, echo = 22:28, eval = F}
-```
-We use separate calls of `mutate()` to first apply weighting multipliers to the item scores, and then to calculate a weighted total raw score. Within `across()`, the target columns are specified `c(i01_w:i50_w)`, and a function `~` is applied, with the `.` shorthand indicating that the value of `demo_wt` is to be multiplied by the item score contained in each of the target columns. These weighted item scores are then processed by `rowSums()` to yield the total score `TOT_raw_weight`. Note the difference between how the same target columns are specified within `across()` and `rowSums()`. Because `across()` is a `tidyverse` function, it can use the brief expression `i01_w:i50_w` to subset the columns, as opposed to `rowSums()`, which requires a more verbose string function.
-```{r apply-weights, echo = 29:32, eval = F}
+We use two separate calls of `mutate()` to first apply weighting multipliers to the item scores, and then to calculate a weighted total raw score. Within `across()`, the target columns are specified `c(i01_w:i50_w)`, and a function `~` is applied, with the `.` shorthand indicating that the value of `demo_wt` is to be multiplied by the item score contained in each of the target columns. These weighted item scores are then processed by `rowSums()` to yield the total score `TOT_raw_weight`. Note the difference between how the same target columns are specified within `across()` and `rowSums()`. Because `across()` is a `tidyverse` function, it can use the transparent expression `i01_w:i50_w` to subset the columns, as opposed to `rowSums()`, which requires the `grep()` call described previously. In this instance, we append `$` to the regular expression, to indicate that the sought-after pattern must have no characters after `_w`. This properly excludes the column `demo_wt` from the calculation of `TOT_raw_weight`.
+```{r apply-weights, echo = 25:30, eval = F}
 ```
 <br>
 
