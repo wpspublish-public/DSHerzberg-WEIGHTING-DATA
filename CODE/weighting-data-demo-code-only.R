@@ -39,7 +39,8 @@ census_match_cat_count <- var_order_census_match %>%
       group_by(across(all_of(.x))) %>%
       summarize(n_census = n()) %>%
       rename(cat = all_of(.x)) %>%
-      mutate(var = all_of(.x)) %>%
+      mutate(var = all_of(.x),
+             pct_census = n_census/10) %>%
       relocate(var, .before = cat)
   ) %>% 
   arrange(match(cat, cat_order))
@@ -48,7 +49,7 @@ var_order_census_match %>%
   map(
     ~ census_match_cat_count %>%
       filter(var == all_of(.x)) %>%
-      select(-var) %>%
+      select(-var, -pct_census) %>%
       rename(!!.x := cat, Freq = n_census)
   ) %>%
   setNames(str_c(var_order_census_match, "_census")) %>%
@@ -73,7 +74,7 @@ input_demo_wts <- bind_cols(
   select(ID:clin_status, samp_prob, demo_wt, ratio, everything()) %>% 
   arrange(desc(samp_prob))
 
-rm(list = ls(pattern = "_census|object|rake"))
+rm(list = ls(pattern = "object|rake"))
 
 unweighted_output <- input_demo_wts %>% 
   select(-c(samp_prob, ratio)) %>%
@@ -93,7 +94,7 @@ write_csv(
   na = ""
 )
 
-weighted_outputB <- original_input %>%
+weighted_output <- original_input %>%
   left_join(unweighted_output[c("ID", "demo_wt")], by = "ID") %>%
   rename_with(~ str_c("i", str_pad(
     as.character(1:50), 2, side = "left", pad = "0"
@@ -113,6 +114,26 @@ write_csv(
   ),
   na = ""
 )
+
+# PROOF OF CONCEPT
+cat_count_comp <- var_order_census_match %>%
+  map_df(
+    ~
+      original_input %>%
+      group_by(across(all_of(.x))) %>%
+      summarize(n_sample = n()) %>%
+      rename(cat = all_of(.x)) %>%
+      mutate(var = all_of(.x),
+             pct_sample = n_sample/10) %>%
+      relocate(var, .before = cat)
+  ) %>% 
+  arrange(match(cat, cat_order)) %>% 
+  bind_cols(census_match_cat_count[c("n_census", "pct_census")]) %>% 
+  mutate(pct_diff = pct_sample - pct_census)
+
+
+
+
 
 
 # REALITY CHECK MATERIAL FOR DEMO/TEACHING ONLY ---------------------------

@@ -106,7 +106,8 @@ census_match_cat_count <- var_order_census_match %>%
       group_by(across(all_of(.x))) %>%
       summarize(n_census = n()) %>%
       rename(cat = all_of(.x)) %>%
-      mutate(var = all_of(.x)) %>%
+      mutate(var = all_of(.x),
+             pct_census = n_census/10) %>%
       relocate(var, .before = cat)
   ) %>% 
   arrange(match(cat, cat_order))
@@ -115,7 +116,7 @@ var_order_census_match %>%
   map(
     ~ census_match_cat_count %>%
       filter(var == all_of(.x)) %>%
-      select(-var) %>%
+      select(-var, -pct_census) %>%
       rename(!!.x := cat, Freq = n_census)
   ) %>%
   setNames(str_c(var_order_census_match, "_census")) %>%
@@ -140,7 +141,7 @@ input_demo_wts <- bind_cols(
   select(ID:clin_status, samp_prob, demo_wt, ratio, everything()) %>% 
   arrange(desc(samp_prob))
 
-rm(list = ls(pattern = "_census|object|rake"))
+rm(list = ls(pattern = "object|rake"))
 ```
 
 
@@ -155,30 +156,30 @@ Within `map_df()`, an anonymous function is defined wherein `census_match_input`
 
 Once the data are grouped by demographic variable, we can use `dplyr::summarize()` and `dplyr::n()` to create a summary table that gives the count of cases in the categories of each demographic variable. This is done sequentially as the function iterates over the elements of `var_order_census_match`, and the output is bound into a single data frame by `map_df`.
 
-The remainder of this snippet formats the summary table. `dplyr::rename()` applies a uniform name `cat` to the column holding the categories within each demographic variable, `dplyr::mutate` creates a new column `var` to hold the names of the demographic variables, `dplyr::relocate()` reorders the columns, and `dplyr::arrange()` sorts the table by `cat` to `match()` an order given by the character vector `cat_order`.
-```{r weights, echo = 1:11, eval = F}
+The remainder of this snippet formats the summary table. `dplyr::rename()` applies a uniform name `cat` to the column holding the categories within each demographic variable, `dplyr::mutate` creates two new columns (`var` for the names of the demographic variables, and `pct_census` for the census target percentages), `dplyr::relocate()` reorders the columns, and `dplyr::arrange()` sorts the table by `cat` to `match()` an order given by the character vector `cat_order`.
+```{r weights, echo = 1:12, eval = F}
 ```
 To prepare the census target counts for the `survey` package, we need to split the data frame containing these counts into four separate data frames, one for each demographic variable. Once again, we use `map()` to iterate over the names of the demographic variables, which are contained in `var_order_census_match`.
 
-Within `map()`, an anonymous function is defined wherein the table of census target counts `census_match_cat_counts` created in the previous snippet is piped into `dplyr::filter()`, which selects only the rows for which the predicate `var == all_of(.x)` returns `TRUE`. That is, it selects rows where `var` is equal to the current element of `census_match_cat_counts`, designated by `.x`. We then remove the `var` column from the data object using `select(-var)`, and we `rename()` the two remaining columns. In order rename column `cat` to `.x`, we must unquote the `.x` element using `!!` and then employ the NSE operator `:=` instead of the conventional `=` sign.
+Within `map()`, an anonymous function is defined wherein the table of census target counts `census_match_cat_counts` created in the previous snippet is piped into `dplyr::filter()`, which selects only the rows for which the predicate `var == all_of(.x)` returns `TRUE`. That is, it selects rows where `var` is equal to the current element of `census_match_cat_counts`, designated by `.x`. We then remove the `var` and `pct_census` columns from the data object using `select(-var, -pct_census)`, and we `rename()` the two remaining columns. In order rename column `cat` to `.x`, we must unquote the `.x` element using `!!` and then employ the NSE operator `:=` instead of the conventional `=` sign.
 
 `map()` returns a list whose elements are the four separate data frames containing census target counts. We name the elements of this list using `stats::setNames()`. The names are drawn from a four-element character vector that combines the elements of `var_order_census_match` with the suffix `"_census"`, concatenated with `str_c()`. Then we use `base::list2env()` to extract the four data frames into the global environment.
-```{r weights, echo = 13:21, eval = F}
+```{r weights, echo = 14:22, eval = F}
 ```
 To use the `survey` package, we first call `survey::svydesign()`, which processes the input data to create a survey object (here named `unweighted_survey_object`). The survey object is a list that includes the input data frame (via the argument `data = original_input`) and other R objects needed by various functions in the `survey` package. `ids =` is a required argument specifying clusters in the input (here the forumula `~1` indicates no clusters). `weights = NULL` indicates that there are no pre-existing survey weights in the data.
-```{r weights, echo = 23:25, eval = F}
+```{r weights, echo = 24:26, eval = F}
 ```
 Recall that our goal in using the `survey` package is to generate demographic weighting multipliers that allow us to adjust data from samples that do not match the demographic composition of the U.S. census. To do this we need to _rake_ our input data against the census target counts for the four demographic varibles. Raking (invoked by calling `survey::rake()`) is the analytic step by which the demographic proportions in the input data are fitted to the target census proportions.
 
 Like `svydesign()`, `rake()` returns a list of objects that can be used by other `survey` functions. The first input to `rake()` is the survey design object created in the previous step, specified here by the argument `design = unweighted_survey_object`. The next input is the sample margins; that is, the unweighted demographic counts of the four variables of interest, from our input file `original_input`. This data frame is contained in `unweighted_survey_object`, and we extract the four counts with the argument `sample.margins = list(~gender, ~educ, ~ethnic, ~region)`, prepending the formula shorthand `~` to the name of each variable. The final input is the target census counts, or population margins. These counts are drawn from the four separate data frames that we created upstream, via the argument `population.margins = list(gender_census, educ_census, ethnic_census, region_census)`.
-```{r weights, echo = 27:30, eval = F}
+```{r weights, echo = 28:31, eval = F}
 ```
 We can now calculate the demographic weighting multipliers for each case in our input sample. The `survey` package derives a unique multiplier for each possible crossing of the four demographic variables. There are 160 possible crossings (2 `gender` categories X 4 `educ` categories X 5 `ethnic` categories X 4 `region` categories), and each case is classified into one and only one crossing. Each crossing is associated with a unique demographic weighting multiplier, which is a function of the difference between the unweighted input count of that crossing (e.g., how many indviduals in _female_ X _high-school diploma_ X _hispanic_ X _south region_ cell), and the target count from the U.S. census.
 
 We can create a new data frame `input_demo_wts` with case-wise demographic multipliers using `dplyr::bind_cols()`, which joins input columns side-by-side, without matching by an index term. We start with the input data set, which we pluck from the raked object `rake_original_input` by subsetting `[[]]` the element `"variables"`. To this we bind the `"prob"` element from `rake_original_input`, which we convert into a column by wrapping it in `base::data.frame()`. The `"prob"` column holds the sampling probabilities associated with the input demographic counts, which are not themselves weighting multipliers, but are an expression of the divergence between the input sample demographics and the census targets. Finally, we bind a new column `demo_wt` that holds the actual case-wise weighting multipliers. These are extracted from `rake_original_input` by calling `survey::weights()`.
 
 The remainder of this snippet restructures, relabels, and sorts this new data frame `input_demo_wts` containing the case-wise weighting multiplers, by applying `dplyr` functions as described previously. It then cleans up the environment by removing unneeded objects. Within `rm()`, the `pattern =` argument contains string elements separated by the logical _or_ operator `|`, so that objects whose names contain _any_ of these elements will be removed.
-```{r weights, echo = 32:42, eval = F}
+```{r weights, echo = 33:43, eval = F}
 ```
 
 <br>
@@ -236,7 +237,7 @@ write_csv(
 It may be useful for some downstream analyses to have access to the original unweighted input data. We initialize `unweighted_output` to hold these data, starting the pipeline with `input_demo_weights`. We use `select()` to drop columns not needed in the output
 ```{r apply-weights, echo = 1:2, eval = F}
 ```
-We use `dplyr::rename_with()` to rename the item columns. The first argument of `rename_with()` is a function (designated with `~`) to apply new names to on a certain subset of columns. Here, we start with `as.character(1:50)` which coerces the sequence of integers from 1 to 50 into a character vector (so that we can use string functions with those elements). We use `stringr::str_pad()` to pad the elements with zeros `pad = "0"` on the `side = "left"`, so that all elements are represented by two characters (e.g., 01, 02, 03, etc.), This expression is then wrapped in `stringr::str_c()`, to prepend `"i"` and append `"_uw"`, the later indicating that the item scores are unweighted. The second argument of `rename_with()` specifies that `i01:i50` are the columns to be renamed.
+We use `dplyr::rename_with()` to rename the item columns. The first argument of `rename_with()` is a function (designated with `~`) that applies new names to a certain subset of columns. Here, we start with `as.character(1:50)` which coerces the sequence of integers from 1 to 50 into a character vector (so that we can use string functions with those elements). We use `stringr::str_pad()` to pad the elements with zeros `pad = "0"` on the `side = "left"`, so that all elements are represented by two characters (e.g., 01, 02, 03, etc.), This expression is then wrapped in `stringr::str_c()`, to prepend `"i"` and append `"_uw"`, the later indicating that the item scores are unweighted. The second argument of `rename_with()` specifies that `i01:i50` are the columns to be renamed.
 ```{r apply-weights, echo = 3:5, eval = F}
 ```
 We use `mutate()` and `base::rowSums()` to caculate a total score `TOT_raw_unweight`, the sum of the 50 unweighted item scores. Within `rowSums()`, we use the `.[]` shorthand to select columns within the piped data object to sum. Within the single brackets, we pass a character vector of the names of the columns to be summed. We do this with the expression `grep("*_uw", names(.))`. `base::grep()` finds matches to a string pattern within a character vector. The first argument `"*_uw"` provides the pattern as a regular expression: any character string `*` ending in `_uw`. The second argument `names(.)` indicates that `grep()` will return matching names from the vector of column names of the piped data object. Thus we pass into `.[]` a vector of the item names, and these are the columns summed to yield `TOT_raw_unweight`. We then arrange the columns in the desired sequence using `relocate()`.
@@ -253,11 +254,25 @@ We use two separate calls of `mutate()` to first apply weighting multipliers to 
 ```
 <br>
 
-<br>
+### 3. Proof of Concept
 
-<br>
+In the following section, we examine the output of the demographic weighting method, to verify that the weighted item scores demonstrate expected properties.
 
-<br>
-
-### 3. Reality Check
-
+First, we create a comparison table `cat_count_comp` with the column `pct_diff`, which expresses, for each demographic variable and category, the difference between the input sample percentage and the census target percentage.
+```{r cat-count-comp, eval = F}
+cat_count_comp <- var_order_census_match %>%
+  map_df(
+    ~
+      original_input %>%
+      group_by(across(all_of(.x))) %>%
+      summarize(n_sample = n()) %>%
+      rename(cat = all_of(.x)) %>%
+      mutate(var = all_of(.x),
+             pct_sample = n_sample/10) %>%
+      relocate(var, .before = cat)
+  ) %>% 
+  arrange(match(cat, cat_order)) %>% 
+  bind_cols(census_match_cat_count[c("n_census", "pct_census")]) %>% 
+  mutate(pct_diff = pct_sample - pct_census)
+```
+Examining `pct_diff`, we would expect the percentage associated with the crossing _female_ X _No_HS_ X _hispanic_ X _northeast_ to be the one that deviates the farthest from its census target percentage. We would therefore also expect the weighting multiplier associated with that crossing to be one that deviates most from 1, because this crossing requires the highest level of weighting.

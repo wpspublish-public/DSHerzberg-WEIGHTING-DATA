@@ -459,7 +459,8 @@ original_input &lt;- suppressMessages(read_csv(url(
       group_by(across(all_of(.x))) %&gt;%
       summarize(n_census = n()) %&gt;%
       rename(cat = all_of(.x)) %&gt;%
-      mutate(var = all_of(.x)) %&gt;%
+      mutate(var = all_of(.x),
+             pct_census = n_census/10) %&gt;%
       relocate(var, .before = cat)
   ) %&gt;% 
   arrange(match(cat, cat_order))
@@ -468,7 +469,7 @@ var_order_census_match %&gt;%
   map(
     ~ census_match_cat_count %&gt;%
       filter(var == all_of(.x)) %&gt;%
-      select(-var) %&gt;%
+      select(-var, -pct_census) %&gt;%
       rename(!!.x := cat, Freq = n_census)
   ) %&gt;%
   setNames(str_c(var_order_census_match, &quot;_census&quot;)) %&gt;%
@@ -493,7 +494,7 @@ input_demo_wts &lt;- bind_cols(
   select(ID:clin_status, samp_prob, demo_wt, ratio, everything()) %&gt;% 
   arrange(desc(samp_prob))
 
-rm(list = ls(pattern = &quot;_census|object|rake&quot;))</code></pre>
+rm(list = ls(pattern = &quot;object|rake&quot;))</code></pre>
 <p><br></p>
 </div>
 <div id="commented-snippets-1" class="section level6">
@@ -502,7 +503,7 @@ rm(list = ls(pattern = &quot;_census|object|rake&quot;))</code></pre>
 <p>In the next snippet, we use <code>purrr::map_df()</code> to iterate over the character vector <code>var_order_census_match</code>, which contains the names of the four demographic variables. <code>map_df()</code> returns a data frame as output (instead of a list). The code within <code>map_df()</code> will be executed once for each element of <code>var_order_census_match</code>, and that element is substituted into the code wherever the token <code>.x</code> appears.</p>
 <p>Within <code>map_df()</code>, an anonymous function is defined wherein <code>census_match_input</code> is piped into <code>dplyr::group_by()</code>. The use of <code>dplyr::across()</code> in this context allows us to group the data object by the demographic variable identified by the current value of <code>.x</code>, without having to introduce the complexities of non-standard evaluation (NSE) and unquoting. <code>tidyselect::all_of()</code> is a helper that allows <code>across()</code> (and other selecting functions) to select variables contained in a character vector.</p>
 <p>Once the data are grouped by demographic variable, we can use <code>dplyr::summarize()</code> and <code>dplyr::n()</code> to create a summary table that gives the count of cases in the categories of each demographic variable. This is done sequentially as the function iterates over the elements of <code>var_order_census_match</code>, and the output is bound into a single data frame by <code>map_df</code>.</p>
-<p>The remainder of this snippet formats the summary table. <code>dplyr::rename()</code> applies a uniform name <code>cat</code> to the column holding the categories within each demographic variable, <code>dplyr::mutate</code> creates a new column <code>var</code> to hold the names of the demographic variables, <code>dplyr::relocate()</code> reorders the columns, and <code>dplyr::arrange()</code> sorts the table by <code>cat</code> to <code>match()</code> an order given by the character vector <code>cat_order</code>.</p>
+<p>The remainder of this snippet formats the summary table. <code>dplyr::rename()</code> applies a uniform name <code>cat</code> to the column holding the categories within each demographic variable, <code>dplyr::mutate</code> creates two new columns (<code>var</code> for the names of the demographic variables, and <code>pct_census</code> for the census target percentages), <code>dplyr::relocate()</code> reorders the columns, and <code>dplyr::arrange()</code> sorts the table by <code>cat</code> to <code>match()</code> an order given by the character vector <code>cat_order</code>.</p>
 <pre class="r"><code>census_match_cat_count &lt;- var_order_census_match %&gt;%
   map_df(
     ~
@@ -510,18 +511,19 @@ rm(list = ls(pattern = &quot;_census|object|rake&quot;))</code></pre>
       group_by(across(all_of(.x))) %&gt;%
       summarize(n_census = n()) %&gt;%
       rename(cat = all_of(.x)) %&gt;%
-      mutate(var = all_of(.x)) %&gt;%
+      mutate(var = all_of(.x),
+             pct_census = n_census/10) %&gt;%
       relocate(var, .before = cat)
   ) %&gt;% 
   arrange(match(cat, cat_order))</code></pre>
 <p>To prepare the census target counts for the <code>survey</code> package, we need to split the data frame containing these counts into four separate data frames, one for each demographic variable. Once again, we use <code>map()</code> to iterate over the names of the demographic variables, which are contained in <code>var_order_census_match</code>.</p>
-<p>Within <code>map()</code>, an anonymous function is defined wherein the table of census target counts <code>census_match_cat_counts</code> created in the previous snippet is piped into <code>dplyr::filter()</code>, which selects only the rows for which the predicate <code>var == all_of(.x)</code> returns <code>TRUE</code>. That is, it selects rows where <code>var</code> is equal to the current element of <code>census_match_cat_counts</code>, designated by <code>.x</code>. We then remove the <code>var</code> column from the data object using <code>select(-var)</code>, and we <code>rename()</code> the two remaining columns. In order rename column <code>cat</code> to <code>.x</code>, we must unquote the <code>.x</code> element using <code>!!</code> and then employ the NSE operator <code>:=</code> instead of the conventional <code>=</code> sign.</p>
+<p>Within <code>map()</code>, an anonymous function is defined wherein the table of census target counts <code>census_match_cat_counts</code> created in the previous snippet is piped into <code>dplyr::filter()</code>, which selects only the rows for which the predicate <code>var == all_of(.x)</code> returns <code>TRUE</code>. That is, it selects rows where <code>var</code> is equal to the current element of <code>census_match_cat_counts</code>, designated by <code>.x</code>. We then remove the <code>var</code> and <code>pct_census</code> columns from the data object using <code>select(-var, -pct_census)</code>, and we <code>rename()</code> the two remaining columns. In order rename column <code>cat</code> to <code>.x</code>, we must unquote the <code>.x</code> element using <code>!!</code> and then employ the NSE operator <code>:=</code> instead of the conventional <code>=</code> sign.</p>
 <p><code>map()</code> returns a list whose elements are the four separate data frames containing census target counts. We name the elements of this list using <code>stats::setNames()</code>. The names are drawn from a four-element character vector that combines the elements of <code>var_order_census_match</code> with the suffix <code>&quot;_census&quot;</code>, concatenated with <code>str_c()</code>. Then we use <code>base::list2env()</code> to extract the four data frames into the global environment.</p>
 <pre class="r"><code>var_order_census_match %&gt;%
   map(
     ~ census_match_cat_count %&gt;%
       filter(var == all_of(.x)) %&gt;%
-      select(-var) %&gt;%
+      select(-var, -pct_census) %&gt;%
       rename(!!.x := cat, Freq = n_census)
   ) %&gt;%
   setNames(str_c(var_order_census_match, &quot;_census&quot;)) %&gt;%
@@ -549,7 +551,7 @@ rm(list = ls(pattern = &quot;_census|object|rake&quot;))</code></pre>
   select(ID:clin_status, samp_prob, demo_wt, ratio, everything()) %&gt;% 
   arrange(desc(samp_prob))
 
-rm(list = ls(pattern = &quot;_census|object|rake&quot;))</code></pre>
+rm(list = ls(pattern = &quot;object|rake&quot;))</code></pre>
 <p><br></p>
 </div>
 </div>
@@ -603,7 +605,7 @@ write_csv(
 <p>It may be useful for some downstream analyses to have access to the original unweighted input data. We initialize <code>unweighted_output</code> to hold these data, starting the pipeline with <code>input_demo_weights</code>. We use <code>select()</code> to drop columns not needed in the output</p>
 <pre class="r"><code>unweighted_output &lt;- input_demo_wts %&gt;% 
   select(-c(samp_prob, ratio)) %&gt;%</code></pre>
-<p>We use <code>dplyr::rename_with()</code> to rename the item columns. The first argument of <code>rename_with()</code> is a function (designated with <code>~</code>) to apply new names to on a certain subset of columns. Here, we start with <code>as.character(1:50)</code> which coerces the sequence of integers from 1 to 50 into a character vector (so that we can use string functions with those elements). We use <code>stringr::str_pad()</code> to pad the elements with zeros <code>pad = &quot;0&quot;</code> on the <code>side = &quot;left&quot;</code>, so that all elements are represented by two characters (e.g., 01, 02, 03, etc.), This expression is then wrapped in <code>stringr::str_c()</code>, to prepend <code>&quot;i&quot;</code> and append <code>&quot;_uw&quot;</code>, the later indicating that the item scores are unweighted. The second argument of <code>rename_with()</code> specifies that <code>i01:i50</code> are the columns to be renamed.</p>
+<p>We use <code>dplyr::rename_with()</code> to rename the item columns. The first argument of <code>rename_with()</code> is a function (designated with <code>~</code>) that applies new names to a certain subset of columns. Here, we start with <code>as.character(1:50)</code> which coerces the sequence of integers from 1 to 50 into a character vector (so that we can use string functions with those elements). We use <code>stringr::str_pad()</code> to pad the elements with zeros <code>pad = &quot;0&quot;</code> on the <code>side = &quot;left&quot;</code>, so that all elements are represented by two characters (e.g., 01, 02, 03, etc.), This expression is then wrapped in <code>stringr::str_c()</code>, to prepend <code>&quot;i&quot;</code> and append <code>&quot;_uw&quot;</code>, the later indicating that the item scores are unweighted. The second argument of <code>rename_with()</code> specifies that <code>i01:i50</code> are the columns to be renamed.</p>
 <pre class="r"><code>  rename_with(~ str_c(&quot;i&quot;, str_pad(
     as.character(1:50), 2, side = &quot;left&quot;, pad = &quot;0&quot;), &quot;_uw&quot;), 
     i01:i50) %&gt;% </code></pre>
@@ -627,7 +629,7 @@ write_csv(
     as.character(1:50), 2, side = &quot;left&quot;, pad = &quot;0&quot;
   ), &quot;_w&quot;),
   i01:i50) %&gt;%</code></pre>
-<p>We use two separate calls of <code>mutate()</code> to first apply weighting multipliers to the item scores, and then to calculate a weighted total raw score. Within <code>across()</code>, the target columns are specified <code>c(i01_w:i50_w)</code>, and a function <code>~</code> is applied, with the <code>.</code> shorthand indicating that the value of <code>demo_wt</code> is to be multiplied by the item score contained in each of the target columns. These weighted item scores are then processed by <code>rowSums()</code> to yield the total score <code>TOT_raw_weight</code>. Note the difference between how the same target columns are specified within <code>across()</code> and <code>rowSums()</code>. Because <code>across()</code> is a <code>tidyverse</code> function, it can use the transparent expression <code>i01_w:i50_w</code> to subset the columns, as opposed to <code>rowSums()</code>, which requires the <code>grep()</code> call described previously. In this instance, we append <code>$</code> to the regular expression, to indicate that the sought after pattern must have no characters after <code>_w</code>. This properly excludes the column <code>demo_wt</code> from the calculation of <code>TOT_raw_weight</code>.</p>
+<p>We use two separate calls of <code>mutate()</code> to first apply weighting multipliers to the item scores, and then to calculate a weighted total raw score. Within <code>across()</code>, the target columns are specified <code>c(i01_w:i50_w)</code>, and a function <code>~</code> is applied, with the <code>.</code> shorthand indicating that the value of <code>demo_wt</code> is to be multiplied by the item score contained in each of the target columns. These weighted item scores are then processed by <code>rowSums()</code> to yield the total score <code>TOT_raw_weight</code>. Note the difference between how the same target columns are specified within <code>across()</code> and <code>rowSums()</code>. Because <code>across()</code> is a <code>tidyverse</code> function, it can use the transparent expression <code>i01_w:i50_w</code> to subset the columns, as opposed to <code>rowSums()</code>, which requires the <code>grep()</code> call described previously. In this instance, we append <code>$</code> to the regular expression, to indicate that the sought-after pattern must have no characters after <code>_w</code>. This properly excludes the column <code>demo_wt</code> from the calculation of <code>TOT_raw_weight</code>.</p>
 <pre class="r"><code>  mutate(across(c(i01_w:i50_w),
                 ~ . * demo_wt)) %&gt;%
   mutate(
@@ -635,14 +637,28 @@ write_csv(
     )) %&gt;%
   relocate(demo_wt, TOT_raw_weight, .before = i01_w)</code></pre>
 <p><br></p>
-<p><br></p>
-<p><br></p>
-<p><br></p>
 </div>
 </div>
 </div>
-<div id="reality-check" class="section level3">
-<h3>3. Reality Check</h3>
+<div id="proof-of-concept" class="section level3">
+<h3>3. Proof of Concept</h3>
+<p>In the following section, we examine the output of the demographic weighting method, to verify that the weighted item scores demonstrate expected properties.</p>
+<p>First, we create a comparison table <code>cat_count_comp</code> with the column <code>pct_diff</code>, which expresses, for each demographic variable and category, the difference between the input sample percentage and the census target percentage.</p>
+<pre class="r"><code>cat_count_comp &lt;- var_order_census_match %&gt;%
+  map_df(
+    ~
+      original_input %&gt;%
+      group_by(across(all_of(.x))) %&gt;%
+      summarize(n_sample = n()) %&gt;%
+      rename(cat = all_of(.x)) %&gt;%
+      mutate(var = all_of(.x),
+             pct_sample = n_sample/10) %&gt;%
+      relocate(var, .before = cat)
+  ) %&gt;% 
+  arrange(match(cat, cat_order)) %&gt;% 
+  bind_cols(census_match_cat_count[c(&quot;n_census&quot;, &quot;pct_census&quot;)]) %&gt;% 
+  mutate(pct_diff = pct_sample - pct_census)</code></pre>
+<p>Examining <code>pct_diff</code>, we would expect the percentage associated with the crossing <em>female</em> X <em>No_HS</em> X <em>hispanic</em> X <em>northeast</em> to deviate the farthest from its census target percentage.</p>
 </div>
 
 
