@@ -539,7 +539,7 @@ rm(list = ls(pattern = &quot;object|rake&quot;))</code></pre>
                               population.margins = list(gender_census, educ_census, 
                                                         ethnic_census, region_census))</code></pre>
 <p>We can now calculate the demographic weighting multipliers for each case in our input sample. The <code>survey</code> package derives a unique multiplier for each possible crossing of the four demographic variables. There are 160 possible crossings (2 <code>gender</code> categories X 4 <code>educ</code> categories X 5 <code>ethnic</code> categories X 4 <code>region</code> categories), and each case is classified into one and only one crossing. Each crossing is associated with a unique demographic weighting multiplier, which is a function of the difference between the unweighted input count of that crossing (e.g., how many indviduals in <em>female</em> X <em>high-school diploma</em> X <em>hispanic</em> X <em>south region</em> cell), and the target count from the U.S. census.</p>
-<p>We can create a new data frame <code>input_demo_wts</code> with case-wise demographic multipliers using <code>dplyr::bind_cols()</code>, which joins input columns side-by-side, without matching by an index term. We start with the input data set, which we pluck from the raked object <code>rake_original_input</code> by subsetting <code>[[]]</code> the element <code>&quot;variables&quot;</code>. To this we bind the <code>&quot;prob&quot;</code> element from <code>rake_original_input</code>, which we convert into a column by wrapping it in <code>base::data.frame()</code>. The <code>&quot;prob&quot;</code> column holds the sampling probabilities associated with the input demographic counts, which are not themselves weighting multipliers, but are an expression of the divergence between the input sample demographics and the census targets. Finally, we bind a new column <code>demo_wt</code> that holds the actual case-wise weighting multipliers. These are extracted from <code>rake_original_input</code> by calling <code>survey::weights()</code>.</p>
+<p>We can create a new data frame <code>input_demo_wts</code> with case-wise demographic multipliers using <code>dplyr::bind_cols()</code>, which joins input columns side-by-side, without matching by an index term. We start with the input data set, which we pluck from the raked object <code>rake_original_input</code> by subsetting <code>[[]]</code> the element <code>&quot;variables&quot;</code>. To this we bind the <code>&quot;prob&quot;</code> element from <code>rake_original_input</code>, which we convert into a column by wrapping it in <code>base::data.frame()</code>. The <code>&quot;prob&quot;</code> column holds the sampling probabilities associated with the input demographic counts, which are not themselves weighting multipliers, but are an expression of the divergence between the input sample demographics and the census targets. Under-sampled categories have a sampling probabilities less than one, and over-sampled categories have a probability greater than 1. Finally, we bind a new column <code>demo_wt</code> that holds the actual case-wise weighting multipliers. These are extracted from <code>rake_original_input</code> by calling <code>survey::weights()</code>.</p>
 <p>The remainder of this snippet restructures, relabels, and sorts this new data frame <code>input_demo_wts</code> containing the case-wise weighting multiplers, by applying <code>dplyr</code> functions as described previously. It then cleans up the environment by removing unneeded objects. Within <code>rm()</code>, the <code>pattern =</code> argument contains string elements separated by the logical <em>or</em> operator <code>|</code>, so that objects whose names contain <em>any</em> of these elements will be removed.</p>
 <pre class="r"><code>input_demo_wts &lt;- bind_cols(
   rake_original_input[[&quot;variables&quot;]],  
@@ -658,7 +658,70 @@ write_csv(
   arrange(match(cat, cat_order)) %&gt;% 
   bind_cols(census_match_cat_count[c(&quot;n_census&quot;, &quot;pct_census&quot;)]) %&gt;% 
   mutate(pct_diff = pct_sample - pct_census)</code></pre>
-<p>Examining <code>pct_diff</code>, we would expect the percentage associated with the crossing <em>female</em> X <em>No_HS</em> X <em>hispanic</em> X <em>northeast</em> to deviate the farthest from its census target percentage.</p>
+<p>Examining <code>pct_diff</code>, we would expect the percentage associated with the crossing <em>female</em> X <em>No_HS</em> X <em>hispanic</em> X <em>northeast</em> to be the one that deviates the farthest from its census target percentage. That appears to be the most under-sampled crossing. We would therefore also expect the weighting multiplier associated with that crossing to be much greater than 1, because this crossing requires the highest level of weighting, given that its count falls farther short of the census target than any other crossing.</p>
+<p>In the next snippet we filter a single row in the <em>female</em> X <em>No_HS</em> X <em>hispanic</em> X <em>northeast</em> crossing and display a subset of columns on the console. The value of <code>demo_wt</code> is 7.37, meaning that each item score for cases in this crossing is multiplied by that amount to adjust for under-sampling in this crossing, relative to the census target.</p>
+<pre class="r"><code>weighted_output %&gt;% 
+  filter(
+    gender == &quot;female&quot; &amp;
+      educ == &quot;no_HS&quot; &amp;
+      ethnic == &quot;hispanic&quot; &amp;
+      region == &quot;northeast&quot;
+  ) %&gt;% 
+  select(-age_range, -clin_status, -(i01_w:i50_w), -TOT_raw_weight) %&gt;% 
+  sample_n(1)</code></pre>
+<p>Analogously, we would expect crossings whose counts approximate the census targets to have multipliers close to 1. Because they are neither under- nor over-sampled, those crossings would need little adjustment to the numerical impact of their collective item scores.</p>
+<p>Examining the <code>pct_diff</code> column of <code>cat_count_comp</code> again, we find that the count associated with the crossing <em>female</em> X <em>HS_grad</em> X <em>black</em> X <em>west</em> seems to adhere closely to its census target. Extracting a single case from this crossing and printing it to the console, we find that <code>demo_wt</code> is 0.978, close to 1 as expected.</p>
+<pre class="r"><code>weighted_output %&gt;% 
+  filter(
+    gender == &quot;female&quot; &amp;
+      educ == &quot;HS_grad&quot; &amp;
+      ethnic == &quot;black&quot; &amp;
+      region == &quot;west&quot;
+  ) %&gt;% 
+  select(-age_range, -clin_status, -(i01_w:i50_w), -TOT_raw_weight) %&gt;% 
+  sample_n(1)</code></pre>
+<p>Now we can inspect different sections of <code>input_demo_wts</code>, which pairs the original input data with the sampling probability and weighting multiplier columns, and is sorted by sampling probability. The bottom (tail) of this data frame contains cases from categories that were under-sampled in the input, so they should have low <code>samp_prob</code> and high <code>demo_wt</code>.</p>
+<pre class="r"><code>tail(input_demo_wts) %&gt;% 
+  select(-(i01:i50))</code></pre>
+<p>Next we look at a small slice of the data frame containing cases from crossings whose counts closely approximated their census targets. In this region, both <code>samp_prob</code> and <code>demo_wt</code> should be close to 1.</p>
+<pre class="r"><code>filter(input_demo_wts, between(samp_prob, .98, 1.02)) %&gt;% 
+  select(-(i01:i50))</code></pre>
+<p>Finally, we examine the top (head) of he data frame, which contains cases from over-sampled crossings. Here, we expect to see high <code>samp_prob</code> and low <code>demo_wt</code>.</p>
+<pre class="r"><code>head(input_demo_wts) %&gt;% 
+  select(-(i01:i50))</code></pre>
+<p>Plotting <code>samp_prob</code> against <code>demo_wt</code>, we visualize a smooth, inverse relationship between the two variables that pivots around the value of 1, which represents an exact match between the input demographic counts and their census targets.</p>
+<pre class="r"><code>ggplot(input_demo_wts, aes(demo_wt, samp_prob)) +
+  geom_line(color = &quot;darkblue&quot;, size = 1) +
+  geom_point(x=1, y=1, color=&#39;purple&#39;, size = 3) + 
+  scale_x_continuous(breaks = seq(0, 8, .5), minor_breaks = seq(0, 8, .1)) +
+  scale_y_continuous(breaks = seq(0, 2.5, .5),
+                     minor_breaks = seq(0, 2.5, .1)) +
+  xlab(&quot;demographic weighting multiplier&quot;) +
+  ylab(&quot;sampling probability&quot;) +
+  annotate(
+    &quot;text&quot;,
+    x = 1.5,
+    y = 1.5,
+    label = &quot;Oversampled relative to census: sampling probability &gt; 1&quot;,
+    color = &quot;red&quot;,
+    hjust = 0
+  ) +
+  annotate(
+    &quot;text&quot;,
+    x = 1.5,
+    y = 1.4,
+    label = &quot;Undersampled relative to census: sampling probability &lt; 1&quot;,
+    color = &quot;darkgreen&quot;,
+    hjust = 0
+  ) +
+annotate(
+  &quot;text&quot;,
+  x = 1.1,
+  y = 1.1,
+  label = &quot;samp prob = weight = 1: demo cell pct matches census pct&quot;,
+  color = &quot;purple&quot;,
+  hjust = 0
+) </code></pre>
 </div>
 
 
