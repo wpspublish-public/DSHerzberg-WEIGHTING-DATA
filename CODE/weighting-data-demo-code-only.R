@@ -53,7 +53,8 @@ var_order_census_match %>%
       rename(!!.x := cat, Freq = n_census)
   ) %>%
   setNames(str_c(var_order_census_match, "_census")) %>%
-  list2env(envir = .GlobalEnv)
+  list2env(envir = .GlobalEnv) %>% 
+  invisible(.)
 
 unweighted_survey_object <- svydesign(ids = ~1, 
                                       data = original_input, 
@@ -121,15 +122,15 @@ cat_count_comp <- var_order_census_match %>%
     ~
       original_input %>%
       group_by(across(all_of(.x))) %>%
-      summarize(n_sample = n()) %>%
+      summarize(n_input = n()) %>%
       rename(cat = all_of(.x)) %>%
       mutate(var = all_of(.x),
-             pct_sample = n_sample/10) %>%
+             pct_input = n_input/10) %>%
       relocate(var, .before = cat)
   ) %>% 
   arrange(match(cat, cat_order)) %>% 
   bind_cols(census_match_cat_count[c("n_census", "pct_census")]) %>% 
-  mutate(pct_diff = pct_sample - pct_census)
+  mutate(pct_diff = pct_input - pct_census)
 
 weighted_output %>% 
   filter(
@@ -152,10 +153,13 @@ weighted_output %>%
   sample_n(1)
 
 tail(input_demo_wts) %>% 
-  select(-(i01:i50))
+  select(-age_range, -clin_status, -(i01:i50), -ratio)
 
 filter(input_demo_wts, between(samp_prob, .98, 1.02)) %>% 
-  select(-(i01:i50))
+  select(-age_range, -clin_status, -(i01:i50), -ratio)
+
+head(input_demo_wts) %>% 
+  select(-age_range, -clin_status, -(i01:i50), -ratio)
 
 ggplot(input_demo_wts, aes(demo_wt, samp_prob)) +
   geom_line(color = "darkblue", size = 1) +
@@ -190,23 +194,7 @@ annotate(
   hjust = 0
 ) 
 
-
-####### START HERE, CHECK FOR REDUNDANCY IN NEXT SNIPPET - WAS
-####### unweighted_cat_count CREATED EARLIER?
-
-# Gives the counts for the 15 categories (across the four demo vars) for the
-# original input data.
-unweighted_cat_count <- var_order_census_match %>%
-  map_df(
-    ~
-      input_demo_wts %>%
-      group_by(across(all_of(.x))) %>%
-      summarize(n_input = n()) %>%
-      rename(cat = all_of(.x)) %>%
-      mutate(var = all_of(.x)) %>%
-      relocate(var, .before = cat)
-  ) %>% 
-  arrange(match(cat, cat_order))
+####### START HERE,
 
 # Gives the unweighted sum of total scores for the 15 categories (across the
 # four demo vars) for the original input data.
@@ -236,7 +224,8 @@ weighted_TOT_sum <- var_order_census_match %>%
   ) %>% 
   arrange(match(cat, cat_order))
 
-list_comp <- list(census_match_cat_count, unweighted_cat_count,
+list_comp <- list(census_match_cat_count, 
+                  cat_count_comp[c("var", "cat", "n_input")],
                    weighted_TOT_sum, unweighted_TOT_sum)
 
 TOT_sum_cat_count_comp <- list_comp %>%

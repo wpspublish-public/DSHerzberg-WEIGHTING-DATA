@@ -42,7 +42,7 @@ We read in two simulated data sets, each including 1000 cases with the four demo
 We set input parameters that will be re-used througout the script.
 
 ###### RUNNABLE CODE
-```{r read-data, eval = F}
+```{r read-data, eval = T}
 suppressMessages(library(here))
 suppressMessages(suppressWarnings(library(tidyverse)))
 suppressMessages(suppressWarnings(library(survey)))
@@ -98,7 +98,7 @@ The script removes unneeded objects from the environment using `base::rm()`, whi
 The `survey` package provides the functions needed to implement demographic weighting multipliers as described in the _Overview_ section. Running the next code section yields a data frame in which each case is paired with a muliplier that reflects the level of divergence between the distribution of its demographic cell in the input data, and the target distributions from the U.S. Census.
 
 ###### RUNNABLE CODE
-```{r weights, eval = F}
+```{r weights, eval = T, message = F}
 census_match_cat_count <- var_order_census_match %>%
   map_df(
     ~
@@ -120,7 +120,8 @@ var_order_census_match %>%
       rename(!!.x := cat, Freq = n_census)
   ) %>%
   setNames(str_c(var_order_census_match, "_census")) %>%
-  list2env(envir = .GlobalEnv)
+  list2env(envir = .GlobalEnv) %>% 
+  invisible(.)
 
 unweighted_survey_object <- svydesign(ids = ~1, 
                                       data = original_input, 
@@ -164,22 +165,22 @@ To prepare the census target counts for the `survey` package, we need to split t
 Within `map()`, an anonymous function is defined wherein the table of census target counts `census_match_cat_counts` created in the previous snippet is piped into `dplyr::filter()`, which selects only the rows for which the predicate `var == all_of(.x)` returns `TRUE`. That is, it selects rows where `var` is equal to the current element of `census_match_cat_counts`, designated by `.x`. We then remove the `var` and `pct_census` columns from the data object using `select(-var, -pct_census)`, and we `rename()` the two remaining columns. In order rename column `cat` to `.x`, we must unquote the `.x` element using `!!` and then employ the NSE operator `:=` instead of the conventional `=` sign.
 
 `map()` returns a list whose elements are the four separate data frames containing census target counts. We name the elements of this list using `stats::setNames()`. The names are drawn from a four-element character vector that combines the elements of `var_order_census_match` with the suffix `"_census"`, concatenated with `str_c()`. Then we use `base::list2env()` to extract the four data frames into the global environment.
-```{r weights, echo = 14:22, eval = F}
+```{r weights, echo = 14:23, eval = F}
 ```
 To use the `survey` package, we first call `survey::svydesign()`, which processes the input data to create a survey object (here named `unweighted_survey_object`). The survey object is a list that includes the input data frame (via the argument `data = original_input`) and other R objects needed by various functions in the `survey` package. `ids =` is a required argument specifying clusters in the input (here the forumula `~1` indicates no clusters). `weights = NULL` indicates that there are no pre-existing survey weights in the data.
-```{r weights, echo = 24:26, eval = F}
+```{r weights, echo = 25:27, eval = F}
 ```
 Recall that our goal in using the `survey` package is to generate demographic weighting multipliers that allow us to adjust data from samples that do not match the demographic composition of the U.S. census. To do this we need to _rake_ our input data against the census target counts for the four demographic varibles. Raking (invoked by calling `survey::rake()`) is the analytic step by which the demographic proportions in the input data are fitted to the target census proportions.
 
 Like `svydesign()`, `rake()` returns a list of objects that can be used by other `survey` functions. The first input to `rake()` is the survey design object created in the previous step, specified here by the argument `design = unweighted_survey_object`. The next input is the sample margins; that is, the unweighted demographic counts of the four variables of interest, from our input file `original_input`. This data frame is contained in `unweighted_survey_object`, and we extract the four counts with the argument `sample.margins = list(~gender, ~educ, ~ethnic, ~region)`, prepending the formula shorthand `~` to the name of each variable. The final input is the target census counts, or population margins. These counts are drawn from the four separate data frames that we created upstream, via the argument `population.margins = list(gender_census, educ_census, ethnic_census, region_census)`.
-```{r weights, echo = 28:31, eval = F}
+```{r weights, echo = 29:32, eval = F}
 ```
 We can now calculate the demographic weighting multipliers for each case in our input sample. The `survey` package derives a unique multiplier for each possible crossing of the four demographic variables. There are 160 possible crossings (2 `gender` categories X 4 `educ` categories X 5 `ethnic` categories X 4 `region` categories), and each case is classified into one and only one crossing. Each crossing is associated with a unique demographic weighting multiplier, which is a function of the difference between the unweighted input count of that crossing (e.g., how many indviduals in _female_ X _high-school diploma_ X _hispanic_ X _south region_ cell), and the target count from the U.S. census.
 
 We can create a new data frame `input_demo_wts` with case-wise demographic multipliers using `dplyr::bind_cols()`, which joins input columns side-by-side, without matching by an index term. We start with the input data set, which we pluck from the raked object `rake_original_input` by subsetting `[[]]` the element `"variables"`. To this we bind the `"prob"` element from `rake_original_input`, which we convert into a column by wrapping it in `base::data.frame()`. The `"prob"` column holds the sampling probabilities associated with the input demographic counts, which are not themselves weighting multipliers, but are an expression of the divergence between the input sample demographics and the census targets. Under-sampled categories have a sampling probabilities less than one, and over-sampled categories have a probability greater than 1. Finally, we bind a new column `demo_wt` that holds the actual case-wise weighting multipliers. These are extracted from `rake_original_input` by calling `survey::weights()`.
 
 The remainder of this snippet restructures, relabels, and sorts this new data frame `input_demo_wts` containing the case-wise weighting multiplers, by applying `dplyr` functions as described previously. It then cleans up the environment by removing unneeded objects. Within `rm()`, the `pattern =` argument contains string elements separated by the logical _or_ operator `|`, so that objects whose names contain _any_ of these elements will be removed.
-```{r weights, echo = 33:43, eval = F}
+```{r weights, echo = 34:44, eval = F}
 ```
 
 <br>
@@ -190,7 +191,7 @@ This section creates separate output files for unweighted and weighted data.
 
 ###### RUNNABLE CODE
 
-```{r apply-weights, eval = F}
+```{r apply-weights, eval = T}
 unweighted_output <- input_demo_wts %>% 
   select(-c(samp_prob, ratio)) %>%
   rename_with(~ str_c("i", str_pad(
@@ -259,26 +260,27 @@ We use two separate calls of `mutate()` to first apply weighting multipliers to 
 In the following section, we examine the output of the demographic weighting method, to verify that the weighted item scores demonstrate expected properties.
 
 First, we create a comparison table `cat_count_comp` with the column `pct_diff`, which expresses, for each demographic variable and category, the difference between the input sample percentage and the census target percentage.
-```{r cat-count-comp, eval = F}
+```{r cat-count-comp, eval = T, message = F}
 cat_count_comp <- var_order_census_match %>%
   map_df(
     ~
       original_input %>%
       group_by(across(all_of(.x))) %>%
-      summarize(n_sample = n()) %>%
+      summarize(n_input = n()) %>%
       rename(cat = all_of(.x)) %>%
       mutate(var = all_of(.x),
-             pct_sample = n_sample/10) %>%
+             pct_input = n_input/10) %>%
       relocate(var, .before = cat)
   ) %>% 
   arrange(match(cat, cat_order)) %>% 
   bind_cols(census_match_cat_count[c("n_census", "pct_census")]) %>% 
-  mutate(pct_diff = pct_sample - pct_census)
+  mutate(pct_diff = pct_input - pct_census)
+cat_count_comp
 ```
 Examining `pct_diff`, we would expect the percentage associated with the crossing _female_ X _No_HS_ X _hispanic_ X _northeast_ to be the one that deviates the farthest from its census target percentage. That appears to be the most under-sampled crossing. We would therefore also expect the weighting multiplier associated with that crossing to be much greater than 1, because this crossing requires the highest level of weighting, given that its count falls farther short of the census target than any other crossing.
 
 In the next snippet we filter a single row in the _female_ X _No_HS_ X _hispanic_ X _northeast_ crossing and display a subset of columns on the console. The value of `demo_wt` is 7.37, meaning that each item score for cases in this crossing is multiplied by that amount to adjust for under-sampling in this crossing, relative to the census target.
-```{r high-weight, eval = F}
+```{r high-weight, eval = T}
 weighted_output %>% 
   filter(
     gender == "female" &
@@ -292,7 +294,7 @@ weighted_output %>%
 Analogously, we would expect crossings whose counts approximate the census targets to have multipliers close to 1. Because they are neither under- nor over-sampled, those crossings would need little adjustment to the numerical impact of their collective item scores.
 
 Examining the `pct_diff` column of `cat_count_comp` again, we find that the count associated with the crossing _female_ X _HS_grad_ X _black_ X _west_ seems to adhere closely to its census target. Extracting a single case from this crossing and printing it to the console, we find that `demo_wt` is 0.978, close to 1 as expected.
-```{r 1-weight, eval = F}
+```{r 1-weight, eval = T}
 weighted_output %>% 
   filter(
     gender == "female" &
@@ -306,23 +308,23 @@ weighted_output %>%
 Now we can inspect different sections of `input_demo_wts`, which pairs the original input data with the sampling probability and weighting multiplier columns, and is sorted by sampling probability. The bottom (tail)
 of this data frame contains cases from categories that were under-sampled in
 the input, so they should have low `samp_prob` and high `demo_wt`.
-```{r tail, eval = F}
+```{r tail, eval = T}
 tail(input_demo_wts) %>% 
-  select(-(i01:i50))
+  select(-age_range, -clin_status, -(i01:i50), -ratio)
 ```
 Next we look at a small slice of the data frame containing cases from crossings
 whose counts closely approximated their census targets. In this region, both `samp_prob` and `demo_wt` should be close to 1.
-```{r middle, eval = F}
+```{r middle, eval = T}
 filter(input_demo_wts, between(samp_prob, .98, 1.02)) %>% 
-  select(-(i01:i50))
+  select(-age_range, -clin_status, -(i01:i50), -ratio)
 ```
 Finally, we examine the top (head) of he data frame, which contains cases from over-sampled crossings. Here, we expect to see high `samp_prob` and low `demo_wt`.
-```{r head, eval = F}
+```{r head, eval = T}
 head(input_demo_wts) %>% 
-  select(-(i01:i50))
+  select(-age_range, -clin_status, -(i01:i50), -ratio)
 ```
 Plotting `samp_prob` against `demo_wt`, we visualize a smooth, inverse relationship between the two variables that pivots around the value of 1, which represents an exact match between the input demographic counts and their census targets.
-```{r plot-samp-prob-demo-wt, eval = F}
+```{r plot-samp-prob-demo-wt, eval = T}
 ggplot(input_demo_wts, aes(demo_wt, samp_prob)) +
   geom_line(color = "darkblue", size = 1) +
   geom_point(x=1, y=1, color='purple', size = 3) + 
