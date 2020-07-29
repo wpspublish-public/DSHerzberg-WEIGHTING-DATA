@@ -3,8 +3,8 @@ title: "Weighting data to adjust for demographically non-representative samples"
 output: html_document
 ---
 
-```{r setup, include=FALSE}
-knitr::opts_chunk$set(echo = TRUE)
+```{r setup, include = FALSE}
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE)
 ```
 
 ### 1. Overview
@@ -43,9 +43,10 @@ We set input parameters that will be re-used througout the script.
 
 ###### RUNNABLE CODE
 ```{r read-data, eval = T}
-suppressMessages(library(here))
-suppressMessages(suppressWarnings(library(tidyverse)))
-suppressMessages(suppressWarnings(library(survey)))
+library(here)
+library(tidyverse)
+library(survey)
+library(huxtable)
 
 set.seed(123)
 
@@ -82,13 +83,13 @@ rm(list = ls(pattern = "_path"))
 
 ###### COMMENTED SNIPPETS
 Because some downstream procedures invoke R's random number generator, we use `base::set.seed()` to ensure that we obtain the same numerical results every time we run the script.
-```{r read-data, echo = 5, eval = F}
+```{r read-data, echo = 6, eval = F}
 ```
 The next snippet shows a method for reading data from a remote server. This makes the script more portable, because it does not depend on reading data stored on a local machine. The remote file path is divided into three segements (`urlRemote_path`, `github_path`, `fileName_path`), which are initialized as character vectors. This modularization allows easy subsitution of different servers, file names, etc. In the call of `readr::read_csv(url())`, which reads in the data, the three file path segments are pasted together into a single URL, using `stringr::str_c()`.
-```{r read-data, echo = 18:25, eval = F}
+```{r read-data, echo = 19:26, eval = F}
 ```
 The script removes unneeded objects from the environment using `base::rm()`, which takes as its argument a `list` of objects to remove. `base::ls()` returns the names of objects, here limited to those whose names have a `pattern` match with the substring `"_path"`. In this way we remove the file path name segments, which are no longer needed once the data are read in.
-```{r read-data, echo = 33, eval = F}
+```{r read-data, echo = 34, eval = F}
 ```
 
 <br>
@@ -259,9 +260,21 @@ We use two separate calls of `mutate()` to first apply weighting multipliers to 
 
 In the following section, we examine the output of the demographic weighting method, to verify that the weighted item scores demonstrate expected properties.
 
-First, we create a comparison table `cat_count_comp` with the column `pct_diff`, which expresses, for each demographic variable and category, the difference between the input sample percentage and the census target percentage.
+First, we write a function for printing well-formatted summary tables, using the `huxtable` package.
+```{r hux-format, eval = T, message = F}
+hux_format <- function(x) {
+  hux(x) %>%
+    set_number_format(everywhere, 1, NA)  %>%
+    set_bottom_border(brdr(1, "solid", "blue")) %>%
+    set_bottom_border(1, everywhere, brdr(2, "solid", "black")) %>%
+    set_bold(1, everywhere) %>%
+    set_background_color(evens, everywhere, "grey95")
+}
+```
+We create a comparison table `cat_count_comp` with the column `pct_diff`, which expresses, for each demographic variable and category, the difference between the input sample percentage and the census target percentage.
 ```{r cat-count-comp, eval = T, message = F}
-cat_count_comp <- var_order_census_match %>%
+cat_count_comp <-
+  var_order_census_match %>%
   map_df(
     ~
       original_input %>%
@@ -269,59 +282,64 @@ cat_count_comp <- var_order_census_match %>%
       summarize(n_input = n()) %>%
       rename(cat = all_of(.x)) %>%
       mutate(var = all_of(.x),
-             pct_input = n_input/10) %>%
+             pct_input = n_input / 10) %>%
       relocate(var, .before = cat)
-  ) %>% 
-  arrange(match(cat, cat_order)) %>% 
-  bind_cols(census_match_cat_count[c("n_census", "pct_census")]) %>% 
+  ) %>%
+  arrange(match(cat, cat_order)) %>%
+  bind_cols(census_match_cat_count[c("n_census", "pct_census")]) %>%
   mutate(pct_diff = pct_input - pct_census)
-cat_count_comp
+hux_format(cat_count_comp %>%
+             mutate(across(
+               var,
+               ~ case_when(lag(.x) == .x ~ NA_character_,
+                           T ~ .x)
+             )))
 ```
 Examining `pct_diff`, we would expect the percentage associated with the crossing _female_ X _No_HS_ X _hispanic_ X _northeast_ to be the one that deviates the farthest from its census target percentage. That appears to be the most under-sampled crossing. We would therefore also expect the weighting multiplier associated with that crossing to be much greater than 1, because this crossing requires the highest level of weighting, given that its count falls farther short of the census target than any other crossing.
 
 In the next snippet we filter a single row in the _female_ X _No_HS_ X _hispanic_ X _northeast_ crossing and display a subset of columns on the console. The value of `demo_wt` is 7.37, meaning that each item score for cases in this crossing is multiplied by that amount to adjust for under-sampling in this crossing, relative to the census target.
 ```{r high-weight, eval = T}
-weighted_output %>% 
-  filter(
-    gender == "female" &
-      educ == "no_HS" &
-      ethnic == "hispanic" &
-      region == "northeast"
-  ) %>% 
-  select(-age_range, -clin_status, -(i01_w:i50_w), -TOT_raw_weight) %>% 
-  sample_n(1)
+hux_format(weighted_output %>% 
+      filter(
+        gender == "female" &
+          educ == "no_HS" &
+          ethnic == "hispanic" &
+          region == "northeast"
+      ) %>% 
+      select(-age_range, -clin_status, -(i01_w:i50_w), -TOT_raw_weight) %>% 
+      sample_n(1)) 
 ```
 Analogously, we would expect crossings whose counts approximate the census targets to have multipliers close to 1. Because they are neither under- nor over-sampled, those crossings would need little adjustment to the numerical impact of their collective item scores.
 
 Examining the `pct_diff` column of `cat_count_comp` again, we find that the count associated with the crossing _female_ X _HS_grad_ X _black_ X _west_ seems to adhere closely to its census target. Extracting a single case from this crossing and printing it to the console, we find that `demo_wt` is 0.978, close to 1 as expected.
 ```{r 1-weight, eval = T}
-weighted_output %>% 
-  filter(
-    gender == "female" &
-      educ == "HS_grad" &
-      ethnic == "black" &
-      region == "west"
-  ) %>% 
-  select(-age_range, -clin_status, -(i01_w:i50_w), -TOT_raw_weight) %>% 
-  sample_n(1)
+hux_format(weighted_output %>% 
+      filter(
+        gender == "female" &
+          educ == "HS_grad" &
+          ethnic == "black" &
+          region == "west"
+      ) %>% 
+      select(-age_range, -clin_status, -(i01_w:i50_w), -TOT_raw_weight) %>% 
+      sample_n(1))
 ```
-Now we can inspect different sections of `input_demo_wts`, which pairs the original input data with the sampling probability and weighting multiplier columns, and is sorted by sampling probability. The bottom (tail)
+Now we can inspect different sections of `input_demo_wts`, which pairs the original input data with the sampling probability and weighting multiplier columns, and is sorted by sampling probability. The bottom (`tail`)
 of this data frame contains cases from categories that were under-sampled in
 the input, so they should have low `samp_prob` and high `demo_wt`.
 ```{r tail, eval = T}
-tail(input_demo_wts) %>% 
-  select(-age_range, -clin_status, -(i01:i50), -ratio)
+hux_format(tail(input_demo_wts) %>%
+             select(-age_range,-clin_status,-(i01:i50),-ratio))
 ```
 Next we look at a small slice of the data frame containing cases from crossings
 whose counts closely approximated their census targets. In this region, both `samp_prob` and `demo_wt` should be close to 1.
 ```{r middle, eval = T}
-filter(input_demo_wts, between(samp_prob, .98, 1.02)) %>% 
-  select(-age_range, -clin_status, -(i01:i50), -ratio)
+hux_format(filter(input_demo_wts, between(samp_prob, .98, 1.02)) %>%
+             select(-age_range,-clin_status,-(i01:i50),-ratio))
 ```
-Finally, we examine the top (head) of he data frame, which contains cases from over-sampled crossings. Here, we expect to see high `samp_prob` and low `demo_wt`.
+We now examine the top (`head`) of the data frame, which contains cases from over-sampled crossings. Here, we expect to see high `samp_prob` and low `demo_wt`.
 ```{r head, eval = T}
-head(input_demo_wts) %>% 
-  select(-age_range, -clin_status, -(i01:i50), -ratio)
+hux_format(head(input_demo_wts) %>%
+             select(-age_range,-clin_status,-(i01:i50),-ratio))
 ```
 Plotting `samp_prob` against `demo_wt`, we visualize a smooth, inverse relationship between the two variables that pivots around the value of 1, which represents an exact match between the input demographic counts and their census targets.
 ```{r plot-samp-prob-demo-wt, eval = T}
@@ -358,3 +376,86 @@ annotate(
   hjust = 0
 ) 
 ```
+Next we create a table `TOT_sum_cat_count_comp` that summarizes weighted and unweighted total scores per case, across the 15 subordinate categories of the four demogrpahic variables.
+```{r TOT, eval = T}
+unweighted_TOT_sum <- var_order_census_match %>%
+  map_df(
+    ~
+      unweighted_output %>%
+      group_by(across(all_of(.x))) %>%
+      summarize(TOT_sum_input = sum(TOT_raw_unweight)) %>% 
+      rename(cat = all_of(.x)) %>%
+      mutate(var = all_of(.x)) %>%
+      relocate(var, .before = cat)
+  ) %>% 
+  arrange(match(cat, cat_order))
+
+weighted_TOT_sum <- var_order_census_match %>%
+  map_df(
+    ~
+      weighted_output %>%
+      group_by(across(all_of(.x))) %>%
+      summarize(TOT_sum_weighted = round(sum(TOT_raw_weight))) %>% 
+      rename(cat = all_of(.x)) %>%
+      mutate(var = all_of(.x)) %>%
+      relocate(var, .before = cat)
+  ) %>% 
+  arrange(match(cat, cat_order))
+
+list_comp <- list(census_match_cat_count[c("var", "cat", "n_census")], 
+                  cat_count_comp[c("var", "cat", "n_input")],
+                   weighted_TOT_sum, unweighted_TOT_sum)
+
+TOT_sum_cat_count_comp <- list_comp %>%
+  reduce(left_join, by = c("var", "cat")) %>%
+  mutate(n_diff = n_input - n_census,
+         sum_diff = TOT_sum_input - TOT_sum_weighted) %>%
+  relocate(var,
+           cat,
+           n_input,
+           n_census,
+           TOT_sum_input,
+           TOT_sum_weighted,
+           n_diff,
+           sum_diff) %>%
+  mutate(cat = factor(cat, levels = cat),) %>% 
+  mutate(across(
+  c(var),
+  ~ case_when(
+    lag(var) != var | is.na(lag(var)) ~ var,
+    T ~ NA_character_
+  )
+))
+hux_format(TOT_sum_cat_count_comp) %>% 
+      set_number_format(everywhere, everywhere, NA)
+```
+In each category, `n_diff` expresses the difference between the input sample size and the census target, and `sum_diff` captures the difference between the sum of total scores based on unweighted input data, and the sum based on weighted, census-adjusted item scores.
+
+We find the expected relationship between these two variables. In under-sampled categories (e.g., `educ = No_HS`), where `n_diff` is negative, we expect `sum_diff` to also be negative, because the weighted sum of total scores needs to be greater than the unweighted sum, so that the census-adjusted item scores can have the same numerical impact that they would have had, had the census target been achieved. An analogous relationship is observed in over-sample categories (e.g., `ethnic = white`).
+
+Across categories, we see that the absolute magnitude of `sum_diff` varies as expected with `n_diff`, such that categories with the greatest level of deviance from the census target also have the greatest disparity between weighted and unweighted sums of total scores.
+
+We can plot these relationships separately for each demographic variable.
+```{r plot, eval = T}
+plot_data <- TOT_sum_cat_count_comp %>%
+  mutate(across(c(var),
+                ~ runner::fill_run(.)))
+
+ggplot(plot_data, aes(n_diff, sum_diff)) +
+  geom_point(aes(shape = var, color = cat), size = 3) +
+  facet_wrap(~ var) +
+  xlab("Sample size diff: unweighted input vs. census target") +
+  ylab("Sum TOT diff: unweighted input vs. census-weighted output") +
+  geom_smooth(method = 'lm',
+              se = F,
+              formula = y ~ x, 
+              size = .3
+              ) +
+  ggpmisc::stat_poly_eq(
+    formula = y ~ x,
+    aes(label = paste(..rr.label.., sep = '*plain(\',\')~')),
+    rr.digits = 5, 
+    parse = TRUE
+  )
+```
+The graphs show a near-perfect correlation between the extent of mis-sampling and the amount of numerical to item scores applied by the weighting procedure.

@@ -1,6 +1,7 @@
 suppressMessages(library(here))
 suppressMessages(suppressWarnings(library(tidyverse)))
 suppressMessages(suppressWarnings(library(survey)))
+suppressMessages(suppressWarnings(library(huxtable)))
 
 set.seed(123)
 
@@ -117,7 +118,18 @@ write_csv(
 )
 
 # PROOF OF CONCEPT
-cat_count_comp <- var_order_census_match %>%
+
+hux_format <- function(x) {
+  hux(x) %>%
+    set_number_format(everywhere, 1, NA)  %>%
+    set_bottom_border(brdr(1, "solid", "blue")) %>%
+    set_bottom_border(1, everywhere, brdr(2, "solid", "black")) %>%
+    set_bold(1, everywhere) %>%
+    set_background_color(evens, everywhere, "grey95")
+}
+
+cat_count_comp <-
+  var_order_census_match %>%
   map_df(
     ~
       original_input %>%
@@ -125,41 +137,47 @@ cat_count_comp <- var_order_census_match %>%
       summarize(n_input = n()) %>%
       rename(cat = all_of(.x)) %>%
       mutate(var = all_of(.x),
-             pct_input = n_input/10) %>%
+             pct_input = n_input / 10) %>%
       relocate(var, .before = cat)
-  ) %>% 
-  arrange(match(cat, cat_order)) %>% 
-  bind_cols(census_match_cat_count[c("n_census", "pct_census")]) %>% 
+  ) %>%
+  arrange(match(cat, cat_order)) %>%
+  bind_cols(census_match_cat_count[c("n_census", "pct_census")]) %>%
   mutate(pct_diff = pct_input - pct_census)
+hux_format(cat_count_comp %>%
+             mutate(across(
+               var,
+               ~ case_when(lag(.x) == .x ~ NA_character_,
+                           T ~ .x)
+             )))
 
-weighted_output %>% 
-  filter(
-    gender == "female" &
-      educ == "no_HS" &
-      ethnic == "hispanic" &
-      region == "northeast"
-  ) %>% 
-  select(-age_range, -clin_status, -(i01_w:i50_w), -TOT_raw_weight) %>% 
-  sample_n(1)
+hux_format(weighted_output %>% 
+      filter(
+        gender == "female" &
+          educ == "no_HS" &
+          ethnic == "hispanic" &
+          region == "northeast"
+      ) %>% 
+      select(-age_range, -clin_status, -(i01_w:i50_w), -TOT_raw_weight) %>% 
+      sample_n(1)) 
 
-weighted_output %>% 
-  filter(
-    gender == "female" &
-      educ == "HS_grad" &
-      ethnic == "black" &
-      region == "west"
-  ) %>% 
-  select(-age_range, -clin_status, -(i01_w:i50_w), -TOT_raw_weight) %>% 
-  sample_n(1)
+hux_format(weighted_output %>% 
+      filter(
+        gender == "female" &
+          educ == "HS_grad" &
+          ethnic == "black" &
+          region == "west"
+      ) %>% 
+      select(-age_range, -clin_status, -(i01_w:i50_w), -TOT_raw_weight) %>% 
+      sample_n(1))
 
-tail(input_demo_wts) %>% 
-  select(-age_range, -clin_status, -(i01:i50), -ratio)
+hux_format(tail(input_demo_wts) %>%
+             select(-age_range,-clin_status,-(i01:i50),-ratio))
 
-filter(input_demo_wts, between(samp_prob, .98, 1.02)) %>% 
-  select(-age_range, -clin_status, -(i01:i50), -ratio)
+hux_format(filter(input_demo_wts, between(samp_prob, .98, 1.02)) %>%
+             select(-age_range,-clin_status,-(i01:i50),-ratio))
 
-head(input_demo_wts) %>% 
-  select(-age_range, -clin_status, -(i01:i50), -ratio)
+hux_format(head(input_demo_wts) %>%
+             select(-age_range,-clin_status,-(i01:i50),-ratio))
 
 ggplot(input_demo_wts, aes(demo_wt, samp_prob)) +
   geom_line(color = "darkblue", size = 1) +
@@ -194,10 +212,6 @@ annotate(
   hjust = 0
 ) 
 
-####### START HERE,
-
-# Gives the unweighted sum of total scores for the 15 categories (across the
-# four demo vars) for the original input data.
 unweighted_TOT_sum <- var_order_census_match %>%
   map_df(
     ~
@@ -210,8 +224,6 @@ unweighted_TOT_sum <- var_order_census_match %>%
   ) %>% 
   arrange(match(cat, cat_order))
 
-# Gives the weighted sum of total scores for the 15 categories (across the
-# four demo vars) for the original input data.
 weighted_TOT_sum <- var_order_census_match %>%
   map_df(
     ~
@@ -224,7 +236,7 @@ weighted_TOT_sum <- var_order_census_match %>%
   ) %>% 
   arrange(match(cat, cat_order))
 
-list_comp <- list(census_match_cat_count, 
+list_comp <- list(census_match_cat_count[c("var", "cat", "n_census")], 
                   cat_count_comp[c("var", "cat", "n_input")],
                    weighted_TOT_sum, unweighted_TOT_sum)
 
@@ -248,6 +260,8 @@ TOT_sum_cat_count_comp <- list_comp %>%
     T ~ NA_character_
   )
 ))
+hux_format(TOT_sum_cat_count_comp) %>% 
+  set_number_format(everywhere, everywhere, NA)
 
 plot_data <- TOT_sum_cat_count_comp %>%
   mutate(across(c(var),
@@ -258,7 +272,6 @@ ggplot(plot_data, aes(n_diff, sum_diff)) +
   facet_wrap(~ var) +
   xlab("Sample size diff: unweighted input vs. census target") +
   ylab("Sum TOT diff: unweighted input vs. census-weighted output") +
-  # title() +
   geom_smooth(method = 'lm',
               se = F,
               formula = y ~ x, 
