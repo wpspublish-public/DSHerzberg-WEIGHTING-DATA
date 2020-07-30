@@ -46,7 +46,6 @@ We set input parameters that will be re-used througout the script.
 library(here)
 library(tidyverse)
 library(survey)
-library(huxtable)
 
 set.seed(123)
 
@@ -288,72 +287,90 @@ cat_count_comp <-
   arrange(match(cat, cat_order)) %>%
   bind_cols(census_match_cat_count[c("n_census", "pct_census")]) %>%
   mutate(pct_diff = pct_input - pct_census)
+
 knitr::kable(cat_count_comp %>%
-             mutate(across(
-               var,
-               ~ case_when(lag(.x) == .x ~ "",
-                           T ~ .x)
-             )),
-             caption = "Table 1")
+               mutate(across(var,
+                             ~ case_when(
+                               lag(.x) == .x ~ "",
+                               T ~ .x
+                             ))),
+             caption = "Table 1: Comparison of input sample percentage to census target")
 ```
 
 Examining `pct_diff`, we can infer that the input sample percentage of cases in the `female X No_HS X hispanic X northeast` cell deviates further from its census target percentage than any other cell. In other words, it should be the most under-sampled cell. We therefore also expect its weighting multiplier to be much greater than 1. Because of the discrepancy between the sample percentage and the census target, the cases in `female X No_HS X hispanic X northeast` require a relatively large degree of numerical adjustment to their item scores.
 
-`Table 2` shows a single case from the `female X No_HS X hispanic X northeast` cell. The value of `demo_wt` is 7.37, meaning that all items scores of cases in this cell are multiplied by 7.37 to adjust for under-sampling relative to the census target.
+`Table 2` shows a single case from the `female X No_HS X hispanic X northeast` cell. The value of `demo_wt` is 7.37, meaning that all item scores of cases in this cell are multiplied by 7.37 to adjust for under-sampling relative to the census target.
 ```{r high-weight, eval = T, echo = F}
-knitr::kable(weighted_output %>% 
-      filter(
-        gender == "female" &
-          educ == "no_HS" &
-          ethnic == "hispanic" &
-          region == "northeast"
-      ) %>% 
-      select(-age_range, -clin_status, -(i01_w:i50_w), -TOT_raw_weight) %>% 
-      sample_n(1),
-      digits = 2,
-      caption = "Table 2") 
+knitr::kable(
+  weighted_output %>%
+    filter(
+      gender == "female" &
+        educ == "no_HS" &
+        ethnic == "hispanic" &
+        region == "northeast"
+    ) %>%
+    select(-age_range,-clin_status,-(i01_w:i50_w),-TOT_raw_weight) %>%
+    sample_n(1),
+  digits = 2,
+  caption = "Table 2: Demographic multiplier from under-sampled cell"
+)
 ```
 
-Analogously, we would expect cells whose sample percentages closely approximate the census targets to have multipliers close to 1. Because they are neither under- nor over-sampled, those cells would need little adjustment to the numerical impact of their collective item scores.
+Analogously, we expect cells whose sample percentages closely approximate the census targets to have multipliers close to 1. Because they are neither under- nor over-sampled, those cells would need little adjustment to the numerical impact of their summed item scores.
 
 Examining the `pct_diff` column of `Table 1` again, we can infer that the sample percentage associated with the `female X HS_grad X black X west` cell adheres closely to its census target. `Table 3` shows a single case from this cell. We see that that `demo_wt` is 0.98, close to 1 as expected.
 ```{r 1-weight, eval = T, echo = F}
-knitr::kable(weighted_output %>% 
-      filter(
-        gender == "female" &
-          educ == "HS_grad" &
-          ethnic == "black" &
-          region == "west"
-      ) %>% 
-      select(-age_range, -clin_status, -(i01_w:i50_w), -TOT_raw_weight) %>% 
-      sample_n(1),
-      digits = 2,
-      caption = "Table 3")
+knitr::kable(
+  weighted_output %>%
+    filter(
+      gender == "female" &
+        educ == "HS_grad" &
+        ethnic == "black" &
+        region == "west"
+    ) %>%
+    select(-age_range,-clin_status,-(i01_w:i50_w),-TOT_raw_weight) %>%
+    sample_n(1),
+  digits = 2,
+  caption = "Table 3: Demographic mupltiplier from accurately sampled cell"
+)
 ```
 
 
-##### START HERE
-
-Now we can inspect different sections of `input_demo_wts`, which pairs the original input data with the sampling probability and weighting multiplier columns, and is sorted by sampling probability. The bottom (`tail`)
+Now we inspect different sections of the data frame `input_demo_wts`, which combines the original input data with the caseswise sampling probability and weighting multiplier columns, and is sorted by sampling probability. The bottom (`tail`)
 of this data frame contains cases from categories that were under-sampled in
-the input, so they should have low `samp_prob` and high `demo_wt`.
-```{r tail, eval = T}
-hux_format(tail(input_demo_wts) %>%
-             select(-age_range,-clin_status,-(i01:i50),-ratio))
+the input, so we expect low `samp_prob` and high `demo_wt`.
+```{r tail, eval = T, echo = F}
+knitr::kable(
+  tail(input_demo_wts) %>%
+    select(-age_range, -clin_status, -(i01:i50), -ratio),
+  digits = 2,
+  caption = "Table 4: Cases from under-sampled cells"
+)
 ```
-Next we look at a small slice of the data frame containing cases from crossings
-whose counts closely approximated their census targets. In this region, both `samp_prob` and `demo_wt` should be close to 1.
-```{r middle, eval = T}
-hux_format(filter(input_demo_wts, between(samp_prob, .98, 1.02)) %>%
-             select(-age_range,-clin_status,-(i01:i50),-ratio))
+
+Next we look at a small slice of the data frame containing cases from cells
+whose sample percentages closely approximated their census targets. In this region, both `samp_prob` and `demo_wt` should be close to 1.
+```{r middle, eval = T, echo = F}
+knitr::kable(
+  filter(input_demo_wts, between(samp_prob, .98, 1.02)) %>%
+    select(-age_range, -clin_status, -(i01:i50), -ratio),
+  digits = 2,
+  caption = "Table 5: Cases from accurately sampled cells"
+)
 ```
-We now examine the top (`head`) of the data frame, which contains cases from over-sampled crossings. Here, we expect to see high `samp_prob` and low `demo_wt`.
-```{r head, eval = T}
-hux_format(head(input_demo_wts) %>%
-             select(-age_range,-clin_status,-(i01:i50),-ratio))
+
+We examine the top (`head`) of the data frame, which contains cases from over-sampled cells Here, we expect to see high `samp_prob` and low `demo_wt`.
+```{r head, eval = T, echo = F}
+knitr::kable(
+  head(input_demo_wts) %>%
+    select(-age_range, -clin_status, -(i01:i50), -ratio),
+  digits = 2,
+  caption = "Table 6: Cases from over-sampled cells"
+)
 ```
-Plotting `samp_prob` against `demo_wt`, we visualize a smooth, inverse relationship between the two variables that pivots around the value of 1, which represents an exact match between the input demographic counts and their census targets.
-```{r plot-samp-prob-demo-wt, eval = T}
+
+Plotting `samp_prob` against `demo_wt`, we visualize an inverse curvilinear relationship between the two variables that pivots around the value of 1, which represents an exact match between the input demographic counts and their census targets.
+```{r plot-samp-prob-demo-wt, eval = T, echo = F}
 ggplot(input_demo_wts, aes(demo_wt, samp_prob)) +
   geom_line(color = "darkblue", size = 1) +
   geom_point(x=1, y=1, color='purple', size = 3) + 
@@ -382,13 +399,14 @@ annotate(
   "text",
   x = 1.1,
   y = 1.1,
-  label = "samp prob = weight = 1: demo cell pct matches census pct",
+  label = "samp prob = weight = 1: input cell pct matches census pct",
   color = "purple",
   hjust = 0
 ) 
 ```
-Next we create a table `TOT_sum_cat_count_comp` that summarizes weighted and unweighted total scores per case, across the 15 subordinate categories of the four demogrpahic variables.
-```{r TOT, eval = T}
+
+Next we create a table <!--`TOT_sum_cat_count_comp`-->that summarizes weighted and unweighted total scores per case, across the 15 subordinate categories of the four demogrpahic variables.
+```{r TOT, eval = T, echo = F}
 unweighted_TOT_sum <- var_order_census_match %>%
   map_df(
     ~
@@ -429,44 +447,46 @@ TOT_sum_cat_count_comp <- list_comp %>%
            TOT_sum_weighted,
            n_diff,
            sum_diff) %>%
-  mutate(cat = factor(cat, levels = cat),) %>% 
-  mutate(across(
-  c(var),
-  ~ case_when(
-    lag(var) != var | is.na(lag(var)) ~ var,
-    T ~ NA_character_
-  )
-))
-hux_format(TOT_sum_cat_count_comp) %>% 
-      set_number_format(everywhere, everywhere, NA)
+  mutate(cat = factor(cat, levels = cat))
+
+knitr::kable(TOT_sum_cat_count_comp %>%
+               mutate(across(var,
+                             ~ case_when(
+                               lag(.x) == .x ~ "",
+                               T ~ .x
+                             ))),
+             caption = "Table 7: Comparison of unweighted and weighted total scores")
 ```
+
 In each category, `n_diff` expresses the difference between the input sample size and the census target, and `sum_diff` captures the difference between the sum of total scores based on unweighted input data, and the sum based on weighted, census-adjusted item scores.
 
-We find the expected relationship between these two variables. In under-sampled categories (e.g., `educ = No_HS`), where `n_diff` is negative, we expect `sum_diff` to also be negative, because the weighted sum of total scores needs to be greater than the unweighted sum, so that the census-adjusted item scores can have the same numerical impact that they would have had, had the census target been achieved. An analogous relationship is observed in over-sample categories (e.g., `ethnic = white`).
+We find the expected relationship between these two variables. In under-sampled categories (e.g., `educ = No_HS`), where `n_diff` is negative, we observe that `sum_diff` is also negative. In under-sampled categories, the weighted sum of total scores needs to be greater than the unweighted sum, to compensate for the reduced numerical impact of the unweighted scores from a fewer-than required number of cases. An analogous relationship is observed in over-sampled categories (e.g., `ethnic = white`).
 
-Across categories, we see that the absolute magnitude of `sum_diff` varies as expected with `n_diff`, such that categories with the greatest level of deviance from the census target also have the greatest disparity between weighted and unweighted sums of total scores.
+Across categories, we see that the absolute magnitude of `sum_diff` varies as expected with `n_diff`, such that categories with the greatest level of deviance from their census targets also have the greatest disparity between weighted and unweighted sums of total scores.
 
-We can plot these relationships separately for each demographic variable.
-```{r plot, eval = T}
+We can plot the relationship between `n_diff` and `sum_diff` separately for each demographic variable. The graphs show a near-perfect correlation between the extent of mis-sampling (`n_diff`) and the magnitude of numerical correction applied to item scores by the weighting procedure (`sum_diff`).
+
+```{r plot, eval = T, echo = F}
 plot_data <- TOT_sum_cat_count_comp %>%
-  mutate(across(c(var),
+  mutate(across(var,
                 ~ runner::fill_run(.)))
 
 ggplot(plot_data, aes(n_diff, sum_diff)) +
   geom_point(aes(shape = var, color = cat), size = 3) +
-  facet_wrap(~ var) +
-  xlab("Sample size diff: unweighted input vs. census target") +
-  ylab("Sum TOT diff: unweighted input vs. census-weighted output") +
-  geom_smooth(method = 'lm',
-              se = F,
-              formula = y ~ x, 
-              size = .3
-              ) +
+  facet_wrap( ~ var) +
+  xlab("n_diff") +
+  ylab("sum_diff") +
+  guides(col = guide_legend(nrow = 11)) +
+  geom_smooth(
+    method = 'lm',
+    se = F,
+    formula = y ~ x,
+    size = .3
+  ) +
   ggpmisc::stat_poly_eq(
     formula = y ~ x,
     aes(label = paste(..rr.label.., sep = '*plain(\',\')~')),
-    rr.digits = 5, 
+    rr.digits = 5,
     parse = TRUE
   )
 ```
-The graphs show a near-perfect correlation between the extent of mis-sampling and the amount of numerical to item scores applied by the weighting procedure.

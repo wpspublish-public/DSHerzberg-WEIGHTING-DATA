@@ -133,44 +133,63 @@ cat_count_comp <-
   arrange(match(cat, cat_order)) %>%
   bind_cols(census_match_cat_count[c("n_census", "pct_census")]) %>%
   mutate(pct_diff = pct_input - pct_census)
+
 knitr::kable(cat_count_comp %>%
-             mutate(across(
-               var,
-               ~ case_when(lag(.x) == .x ~ "",
-                           T ~ .x)
-             )),
-             caption = "Table 1")
+               mutate(across(var,
+                             ~ case_when(
+                               lag(.x) == .x ~ "",
+                               T ~ .x
+                             ))),
+             caption = "Table 1: Comparison of input sample percentage to census target")
 
-knitr::kable(weighted_output %>% 
-               filter(
-                 gender == "female" &
-                   educ == "no_HS" &
-                   ethnic == "hispanic" &
-                   region == "northeast"
-               ) %>% 
-               select(-age_range, -clin_status, -(i01_w:i50_w), -TOT_raw_weight) %>% 
-               sample_n(1),
-             digits = 2,
-             caption = "Table 2") 
+knitr::kable(
+  weighted_output %>%
+    filter(
+      gender == "female" &
+        educ == "no_HS" &
+        ethnic == "hispanic" &
+        region == "northeast"
+    ) %>%
+    select(-age_range,-clin_status,-(i01_w:i50_w),-TOT_raw_weight) %>%
+    sample_n(1),
+  digits = 2,
+  caption = "Table 2: Demographic multiplier from under-sampled cell"
+)
 
-hux_format(weighted_output %>% 
-      filter(
-        gender == "female" &
-          educ == "HS_grad" &
-          ethnic == "black" &
-          region == "west"
-      ) %>% 
-      select(-age_range, -clin_status, -(i01_w:i50_w), -TOT_raw_weight) %>% 
-      sample_n(1))
+knitr::kable(
+  weighted_output %>%
+    filter(
+      gender == "female" &
+        educ == "HS_grad" &
+        ethnic == "black" &
+        region == "west"
+    ) %>%
+    select(-age_range,-clin_status,-(i01_w:i50_w),-TOT_raw_weight) %>%
+    sample_n(1),
+  digits = 2,
+  caption = "Table 3: Demographic mupltiplier from accurately sampled cell"
+)
 
-hux_format(tail(input_demo_wts) %>%
-             select(-age_range,-clin_status,-(i01:i50),-ratio))
+knitr::kable(
+  tail(input_demo_wts) %>%
+    select(-age_range, -clin_status, -(i01:i50), -ratio),
+  digits = 2,
+  caption = "Table 4: Cases from under-sampled cells"
+)
 
-hux_format(filter(input_demo_wts, between(samp_prob, .98, 1.02)) %>%
-             select(-age_range,-clin_status,-(i01:i50),-ratio))
+knitr::kable(
+  filter(input_demo_wts, between(samp_prob, .98, 1.02)) %>%
+    select(-age_range, -clin_status, -(i01:i50), -ratio),
+  digits = 2,
+  caption = "Table 5: Cases from accurately sampled cells"
+)
 
-hux_format(head(input_demo_wts) %>%
-             select(-age_range,-clin_status,-(i01:i50),-ratio))
+knitr::kable(
+  head(input_demo_wts) %>%
+    select(-age_range, -clin_status, -(i01:i50), -ratio),
+  digits = 2,
+  caption = "Table 6: Cases from over-sampled cells"
+)
 
 ggplot(input_demo_wts, aes(demo_wt, samp_prob)) +
   geom_line(color = "darkblue", size = 1) +
@@ -200,7 +219,7 @@ annotate(
   "text",
   x = 1.1,
   y = 1.1,
-  label = "samp prob = weight = 1: demo cell pct matches census pct",
+  label = "samp prob = weight = 1: input cell pct matches census pct",
   color = "purple",
   hjust = 0
 ) 
@@ -231,7 +250,7 @@ weighted_TOT_sum <- var_order_census_match %>%
 
 list_comp <- list(census_match_cat_count[c("var", "cat", "n_census")], 
                   cat_count_comp[c("var", "cat", "n_input")],
-                   weighted_TOT_sum, unweighted_TOT_sum)
+                  weighted_TOT_sum, unweighted_TOT_sum)
 
 TOT_sum_cat_count_comp <- list_comp %>%
   reduce(left_join, by = c("var", "cat")) %>%
@@ -245,35 +264,36 @@ TOT_sum_cat_count_comp <- list_comp %>%
            TOT_sum_weighted,
            n_diff,
            sum_diff) %>%
-  mutate(cat = factor(cat, levels = cat),) %>% 
-  mutate(across(
-  c(var),
-  ~ case_when(
-    lag(var) != var | is.na(lag(var)) ~ var,
-    T ~ NA_character_
-  )
-))
-hux_format(TOT_sum_cat_count_comp) %>% 
-  set_number_format(everywhere, everywhere, NA)
+  mutate(cat = factor(cat, levels = cat))
+
+knitr::kable(TOT_sum_cat_count_comp %>%
+               mutate(across(var,
+                             ~ case_when(
+                               lag(.x) == .x ~ "",
+                               T ~ .x
+                             ))),
+             caption = "Table 7: Comparison of unweighted and weighted total scores")
 
 plot_data <- TOT_sum_cat_count_comp %>%
-  mutate(across(c(var),
+  mutate(across(var,
                 ~ runner::fill_run(.)))
 
 ggplot(plot_data, aes(n_diff, sum_diff)) +
   geom_point(aes(shape = var, color = cat), size = 3) +
-  facet_wrap(~ var) +
-  xlab("Sample size diff: unweighted input vs. census target") +
-  ylab("Sum TOT diff: unweighted input vs. census-weighted output") +
-  geom_smooth(method = 'lm',
-              se = F,
-              formula = y ~ x, 
-              size = .3
-              ) +
+  facet_wrap( ~ var) +
+  xlab("n_diff") +
+  ylab("sum_diff") +
+  guides(col = guide_legend(nrow = 11)) +
+  geom_smooth(
+    method = 'lm',
+    se = F,
+    formula = y ~ x,
+    size = .3
+  ) +
   ggpmisc::stat_poly_eq(
     formula = y ~ x,
     aes(label = paste(..rr.label.., sep = '*plain(\',\')~')),
-    rr.digits = 5, 
+    rr.digits = 5,
     parse = TRUE
   )
 
