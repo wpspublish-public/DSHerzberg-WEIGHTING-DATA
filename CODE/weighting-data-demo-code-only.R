@@ -1,7 +1,6 @@
 suppressMessages(library(here))
 suppressMessages(suppressWarnings(library(tidyverse)))
 suppressMessages(suppressWarnings(library(survey)))
-suppressMessages(suppressWarnings(library(huxtable)))
 
 set.seed(123)
 
@@ -119,15 +118,6 @@ write_csv(
 
 # PROOF OF CONCEPT
 
-hux_format <- function(x) {
-  hux(x) %>%
-    set_number_format(everywhere, 1, NA)  %>%
-    set_bottom_border(brdr(1, "solid", "blue")) %>%
-    set_bottom_border(1, everywhere, brdr(2, "solid", "black")) %>%
-    set_bold(1, everywhere) %>%
-    set_background_color(evens, everywhere, "grey95")
-}
-
 cat_count_comp <-
   var_order_census_match %>%
   map_df(
@@ -143,22 +133,25 @@ cat_count_comp <-
   arrange(match(cat, cat_order)) %>%
   bind_cols(census_match_cat_count[c("n_census", "pct_census")]) %>%
   mutate(pct_diff = pct_input - pct_census)
-hux_format(cat_count_comp %>%
+knitr::kable(cat_count_comp %>%
              mutate(across(
                var,
-               ~ case_when(lag(.x) == .x ~ NA_character_,
+               ~ case_when(lag(.x) == .x ~ "",
                            T ~ .x)
-             )))
+             )),
+             caption = "Table 1")
 
-hux_format(weighted_output %>% 
-      filter(
-        gender == "female" &
-          educ == "no_HS" &
-          ethnic == "hispanic" &
-          region == "northeast"
-      ) %>% 
-      select(-age_range, -clin_status, -(i01_w:i50_w), -TOT_raw_weight) %>% 
-      sample_n(1)) 
+knitr::kable(weighted_output %>% 
+               filter(
+                 gender == "female" &
+                   educ == "no_HS" &
+                   ethnic == "hispanic" &
+                   region == "northeast"
+               ) %>% 
+               select(-age_range, -clin_status, -(i01_w:i50_w), -TOT_raw_weight) %>% 
+               sample_n(1),
+             digits = 2,
+             caption = "Table 2") 
 
 hux_format(weighted_output %>% 
       filter(

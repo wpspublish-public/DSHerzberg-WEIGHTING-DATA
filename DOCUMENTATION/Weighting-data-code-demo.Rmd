@@ -258,10 +258,10 @@ We use two separate calls of `mutate()` to first apply weighting multipliers to 
 
 ### 3. Proof of Concept
 
-In the following section, we examine the output of the demographic weighting method, to verify that the weighted item scores demonstrate expected properties.
+Here we review the output of the demographic weighting method, to verify that the weighted item scores demonstrate expected properties.
 
-First, we write a function for printing well-formatted summary tables, using the `huxtable` package.
-```{r hux-format, eval = T, message = F}
+<!--First, we write a function for printing well-formatted summary tables, using the `huxtable` package.-->
+```{r hux-format, eval = T, echo = F}
 hux_format <- function(x) {
   hux(x) %>%
     set_number_format(everywhere, 1, NA)  %>%
@@ -271,8 +271,8 @@ hux_format <- function(x) {
     set_background_color(evens, everywhere, "grey95")
 }
 ```
-We create a comparison table `cat_count_comp` with the column `pct_diff`, which expresses, for each demographic variable and category, the difference between the input sample percentage and the census target percentage.
-```{r cat-count-comp, eval = T, message = F}
+We create a comparison table <!--`cat_count_comp`--> with the column `pct_diff`, which expresses, for each demographic variable and category, the difference between the input sample percentage and the census target percentage.
+```{r cat-count-comp, eval = T, echo = F}
 cat_count_comp <-
   var_order_census_match %>%
   map_df(
@@ -288,18 +288,20 @@ cat_count_comp <-
   arrange(match(cat, cat_order)) %>%
   bind_cols(census_match_cat_count[c("n_census", "pct_census")]) %>%
   mutate(pct_diff = pct_input - pct_census)
-hux_format(cat_count_comp %>%
+knitr::kable(cat_count_comp %>%
              mutate(across(
                var,
-               ~ case_when(lag(.x) == .x ~ NA_character_,
+               ~ case_when(lag(.x) == .x ~ "",
                            T ~ .x)
-             )))
+             )),
+             caption = "Table 1")
 ```
-Examining `pct_diff`, we would expect the percentage associated with the crossing _female_ X _No_HS_ X _hispanic_ X _northeast_ to be the one that deviates the farthest from its census target percentage. That appears to be the most under-sampled crossing. We would therefore also expect the weighting multiplier associated with that crossing to be much greater than 1, because this crossing requires the highest level of weighting, given that its count falls farther short of the census target than any other crossing.
 
-In the next snippet we filter a single row in the _female_ X _No_HS_ X _hispanic_ X _northeast_ crossing and display a subset of columns on the console. The value of `demo_wt` is 7.37, meaning that each item score for cases in this crossing is multiplied by that amount to adjust for under-sampling in this crossing, relative to the census target.
-```{r high-weight, eval = T}
-hux_format(weighted_output %>% 
+Examining `pct_diff`, we can infer that the input sample percentage of cases in the `female X No_HS X hispanic X northeast` cell deviates further from its census target percentage than any other cell. In other words, it should be the most under-sampled cell. We therefore also expect its weighting multiplier to be much greater than 1. Because of the discrepancy between the sample percentage and the census target, the cases in `female X No_HS X hispanic X northeast` require a relatively large degree of numerical adjustment to their item scores.
+
+`Table 2` shows a single case from the `female X No_HS X hispanic X northeast` cell. The value of `demo_wt` is 7.37, meaning that all items scores of cases in this cell are multiplied by 7.37 to adjust for under-sampling relative to the census target.
+```{r high-weight, eval = T, echo = F}
+knitr::kable(weighted_output %>% 
       filter(
         gender == "female" &
           educ == "no_HS" &
@@ -307,13 +309,16 @@ hux_format(weighted_output %>%
           region == "northeast"
       ) %>% 
       select(-age_range, -clin_status, -(i01_w:i50_w), -TOT_raw_weight) %>% 
-      sample_n(1)) 
+      sample_n(1),
+      digits = 2,
+      caption = "Table 2") 
 ```
-Analogously, we would expect crossings whose counts approximate the census targets to have multipliers close to 1. Because they are neither under- nor over-sampled, those crossings would need little adjustment to the numerical impact of their collective item scores.
 
-Examining the `pct_diff` column of `cat_count_comp` again, we find that the count associated with the crossing _female_ X _HS_grad_ X _black_ X _west_ seems to adhere closely to its census target. Extracting a single case from this crossing and printing it to the console, we find that `demo_wt` is 0.978, close to 1 as expected.
-```{r 1-weight, eval = T}
-hux_format(weighted_output %>% 
+Analogously, we would expect cells whose sample percentages closely approximate the census targets to have multipliers close to 1. Because they are neither under- nor over-sampled, those cells would need little adjustment to the numerical impact of their collective item scores.
+
+Examining the `pct_diff` column of `Table 1` again, we can infer that the sample percentage associated with the `female X HS_grad X black X west` cell adheres closely to its census target. `Table 3` shows a single case from this cell. We see that that `demo_wt` is 0.98, close to 1 as expected.
+```{r 1-weight, eval = T, echo = F}
+knitr::kable(weighted_output %>% 
       filter(
         gender == "female" &
           educ == "HS_grad" &
@@ -321,8 +326,14 @@ hux_format(weighted_output %>%
           region == "west"
       ) %>% 
       select(-age_range, -clin_status, -(i01_w:i50_w), -TOT_raw_weight) %>% 
-      sample_n(1))
+      sample_n(1),
+      digits = 2,
+      caption = "Table 3")
 ```
+
+
+##### START HERE
+
 Now we can inspect different sections of `input_demo_wts`, which pairs the original input data with the sampling probability and weighting multiplier columns, and is sorted by sampling probability. The bottom (`tail`)
 of this data frame contains cases from categories that were under-sampled in
 the input, so they should have low `samp_prob` and high `demo_wt`.
