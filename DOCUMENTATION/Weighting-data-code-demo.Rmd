@@ -7,15 +7,15 @@ output: html_document
 knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE)
 ```
 
-### 1. Overview
+### I. Overview
 
 To develop norms for tests and behavior rating scales, we collect nationwide samples comprised of data from many thousands of persons. Our intent is to have the demographic makeup of these samples match the U.S. census proportions, as closely as possible. The demographic variables of interest are age, gender, (parent) education level, race/ethnicity, and U.S. geographic region.
 
 Our approach is to stratify the sample by age, and ensure that we have enough cases within each age group to develop stable norms. Within each age stratum, we attempt to match the proportions of gender, education level, race/ethnicity, and region to the census proportions for that age group. Inevitably, some demographic cells are harder to fill than others, especially lower levels of education and certain ethnic minority groups. Pursuing the last few cases to fill out these cells is expensive and time-consuming.
 
-We now have the option of weighting the data of samples that fall short of the ideal demographic composition. We can calculate weighting multipliers corresponding to each possible crossing of the four key demographic variables. For example, one crossing would be _female_ X _high-school diploma_ X _hispanic_ X _south region_. All cases falling into that bucket would have the same weighting multiplier.
+We now have the option of weighting the data of samples that fall short of the ideal demographic composition. We can calculate weighting multipliers corresponding to each possible crossing of the categories within the four key demographic variables. For example, one crossing would be `female X high-school diploma X hispanic X south region`. All cases falling into this cell would have the same weighting multiplier.
 
-We can apply that multiplier to the data at the most granular level. As an example, we can use a hypothetical behavior rating scale where a parent rates 50 items about their child's level of hyperactive/inattentive behavior during the past month. These behaviors are rated on a frequency scale, coded as follows:
+We can apply that multiplier to the data at the most granular level: individual item scores. As an example, we can use a hypothetical behavior rating scale where a parent rates 50 items about their child's level of hyperactive/inattentive behavior during the past month. These behaviors are rated on a frequency scale, coded as follows:
 
 * Never (or almost never) = 1
 * Occasionally = 2
@@ -26,20 +26,20 @@ A higher code on any item indicates greater frequency of problematic behavior.
 
 We can apply a demographic weighting multiplier on a case-wise basis to each of the 50 item codes. These data would then be weighted for all subsequent item- and score-level analyses.
 
-In practice this would work as follows. Suppose that the previously mentioned demographic cell (_female_ X _high-school diploma_ X _hispanic_ X _south region_) was under-represented in our sample, with respect to U.S. census proportions. The demographic weighting multiplier would serve to increase the numerical impact of the insufficient number of cases in this cell. Thus, if we collected 40 cases in this cell, and the census required 60, the multiplier would be applied to increase the values of the item codes in our 40 cases. Once these values were increased, summing the item codes from from our 40 cases would yield a sum approximately equivalent to the sum of the item codes of 60 non-weighted cases with the same demographic characteristics. 
+In practice this would work as follows. Suppose that the previously mentioned demographic cell (`female X high-school diploma X hispanic X south region`) was under-represented in our sample, with respect to U.S. census proportions. The demographic weighting multiplier would serve to increase the numerical impact of the insufficient number of cases in this cell. Thus, if we collected 40 cases in this cell, and the census required 60, the multiplier would be applied to increase the values of the item codes in our 40 cases. Once these values were increased, summing the item codes from from our 40 cases would yield a sum approximately equivalent to the sum of the item codes of 60 non-weighted cases with the same demographic characteristics. 
 
 To recount, we can use this weighting method to adjust the values of the data in our collected sample, so that the sample statistics would be similar to those obtained from a sample that exactly matched the U.S. Census demographic proportions.
 
-### 2. Demonstration of Method
+### II. Demonstration of Method
 
-#### Load packages, specify input parameters, read data
+#### A. Load packages, specify input parameters, read data
 
 We read in two simulated data sets, each including 1000 cases with the four demographic variables of interest, and 50 behavior rating items coded as described above. 
 
 * `original_input` is an example of a typical WPS research data set, in which the distributions of the demographic variables do not match the U.S. Census targets.
 * `census_match_input` matches the census targets in its demographic composition.
 
-We set input parameters that will be re-used througout the script.
+We initialize several character vectors that will be used throughout the script.
 
 ###### RUNNABLE CODE
 ```{r read-data, eval = T}
@@ -84,18 +84,18 @@ rm(list = ls(pattern = "_path"))
 Because some downstream procedures invoke R's random number generator, we use `base::set.seed()` to ensure that we obtain the same numerical results every time we run the script.
 ```{r read-data, echo = 6, eval = F}
 ```
-The next snippet shows a method for reading data from a remote server. This makes the script more portable, because it does not depend on reading data stored on a local machine. The remote file path is divided into three segements (`urlRemote_path`, `github_path`, `fileName_path`), which are initialized as character vectors. This modularization allows easy subsitution of different servers, file names, etc. In the call of `readr::read_csv(url())`, which reads in the data, the three file path segments are pasted together into a single URL, using `stringr::str_c()`.
+The next snippet shows a method for reading data from a remote server. This makes the script more portable, because it does not depend on reading data stored on a local machine. The remote file path is divided into three segements (`urlRemote_path`, `github_path`, `fileName_path`), which are initialized as character vectors. This modularization allows easy subsitution of different servers, file names, etc. In the call of `readr::read_csv(url())`, which reads in the data, the three file path segments are concatenated into a single URL, using `stringr::str_c()`.
 ```{r read-data, echo = 19:26, eval = F}
 ```
 The script removes unneeded objects from the environment using `base::rm()`, which takes as its argument a `list` of objects to remove. `base::ls()` returns the names of objects, here limited to those whose names have a `pattern` match with the substring `"_path"`. In this way we remove the file path name segments, which are no longer needed once the data are read in.
-```{r read-data, echo = 34, eval = F}
+```{r read-data, echo = 33, eval = F}
 ```
 
 <br>
 
-#### Calculate demographic weighting multipliers using the `survey` package
+#### B. Calculate demographic weighting multipliers using the `survey` package
 
-The `survey` package provides the functions needed to implement demographic weighting multipliers as described in the _Overview_ section. Running the next code section yields a data frame in which each case is paired with a muliplier that reflects the level of divergence between the distribution of its demographic cell in the input data, and the target distributions from the U.S. Census.
+The `survey` package provides the functions needed to implement demographic weighting multipliers as described in the _Overview_ section. Running the next code section yields a data frame in which each case is paired with a multiplier that reflects the level of discrepancy between the existing sample size of its demographic cell, and the sample size needed to meet the census target.
 
 ###### RUNNABLE CODE
 ```{r weights, eval = T, message = F}
@@ -149,13 +149,13 @@ rm(list = ls(pattern = "object|rake"))
 <br>
 
 ###### COMMENTED SNIPPETS
-The `survey` package requires as input the census target counts for the four key demographic variables. We can obtain these counts from `census_match_input`, one of the data files read in upstream, because it has the same number of cases as `original_input` (the file needing demographic weights).
+The `survey` package requires as input the census target counts for the four key demographic variables. We can obtain these counts from `census_match_input`, one of the data files read in upstream, because it has the same number of cases as `original_input` (the file to which we will apply demographic weighting multipliers).
 
-In the next snippet, we use `purrr::map_df()` to iterate over the character vector `var_order_census_match`, which contains the names of the four demographic variables. `map_df()` returns a data frame as output (instead of a list). The code within `map_df()` will be executed once for each element of `var_order_census_match`, and that element is substituted into the code wherever the token `.x` appears.
+In the next snippet, we use `purrr::map_df()` to iterate over the character vector `var_order_census_match`, which contains the names of the four demographic variables. `map_df()` returns a data frame as output. The code within `map_df()` will be executed once for each element of `var_order_census_match`, and that element is substituted into the code wherever the token `.x` appears.
 
 Within `map_df()`, an anonymous function is defined wherein `census_match_input` is piped into `dplyr::group_by()`. The use of `dplyr::across()` in this context allows us to group the data object by the demographic variable identified by the current value of `.x`, without having to introduce the complexities of non-standard evaluation (NSE) and unquoting. `tidyselect::all_of()` is a helper that allows `across()` (and other selecting functions) to select variables contained in a character vector.
 
-Once the data are grouped by demographic variable, we can use `dplyr::summarize()` and `dplyr::n()` to create a summary table that gives the count of cases in the categories of each demographic variable. This is done sequentially as the function iterates over the elements of `var_order_census_match`, and the output is bound into a single data frame by `map_df`.
+Once the data are grouped by demographic variable, we can use `dplyr::summarize()` and `dplyr::n()` to create a summary table that gives the count of cases in the categories of each demographic variable (e.g., within the _variable_ `gender`, the _categories_ are `male` and `female`. The table is built sequentially as the function iterates over the elements of `var_order_census_match`, and the output is bound into a single data frame by `map_df`.
 
 The remainder of this snippet formats the summary table. `dplyr::rename()` applies a uniform name `cat` to the column holding the categories within each demographic variable, `dplyr::mutate` creates two new columns (`var` for the names of the demographic variables, and `pct_census` for the census target percentages), `dplyr::relocate()` reorders the columns, and `dplyr::arrange()` sorts the table by `cat` to `match()` an order given by the character vector `cat_order`.
 ```{r weights, echo = 1:12, eval = F}
@@ -175,9 +175,9 @@ Recall that our goal in using the `survey` package is to generate demographic we
 Like `svydesign()`, `rake()` returns a list of objects that can be used by other `survey` functions. The first input to `rake()` is the survey design object created in the previous step, specified here by the argument `design = unweighted_survey_object`. The next input is the sample margins; that is, the unweighted demographic counts of the four variables of interest, from our input file `original_input`. This data frame is contained in `unweighted_survey_object`, and we extract the four counts with the argument `sample.margins = list(~gender, ~educ, ~ethnic, ~region)`, prepending the formula shorthand `~` to the name of each variable. The final input is the target census counts, or population margins. These counts are drawn from the four separate data frames that we created upstream, via the argument `population.margins = list(gender_census, educ_census, ethnic_census, region_census)`.
 ```{r weights, echo = 29:32, eval = F}
 ```
-We can now calculate the demographic weighting multipliers for each case in our input sample. The `survey` package derives a unique multiplier for each possible crossing of the four demographic variables. There are 160 possible crossings (2 `gender` categories X 4 `educ` categories X 5 `ethnic` categories X 4 `region` categories), and each case is classified into one and only one crossing. Each crossing is associated with a unique demographic weighting multiplier, which is a function of the difference between the unweighted input count of that crossing (e.g., how many indviduals in _female_ X _high-school diploma_ X _hispanic_ X _south region_ cell), and the target count from the U.S. census.
+We can now calculate the demographic weighting multipliers for each case in our input sample. The `survey` package derives a unique multiplier for each possible crossing of the four demographic variables. There are 160 possible crossings (2 `gender` categories X 4 `educ` categories X 5 `ethnic` categories X 4 `region` categories), and each case is classified into one and only one crossing. Each crossing is associated with a unique demographic weighting multiplier, which is a function of the difference between the unweighted input count of that crossing (e.g., how many indviduals in the `female X high-school diploma X hispanic X south region` cell), and the target count from the U.S. census.
 
-We can create a new data frame `input_demo_wts` with case-wise demographic multipliers using `dplyr::bind_cols()`, which joins input columns side-by-side, without matching by an index term. We start with the input data set, which we pluck from the raked object `rake_original_input` by subsetting `[[]]` the element `"variables"`. To this we bind the `"prob"` element from `rake_original_input`, which we convert into a column by wrapping it in `base::data.frame()`. The `"prob"` column holds the sampling probabilities associated with the input demographic counts, which are not themselves weighting multipliers, but are an expression of the divergence between the input sample demographics and the census targets. Under-sampled categories have a sampling probabilities less than one, and over-sampled categories have a probability greater than 1. Finally, we bind a new column `demo_wt` that holds the actual case-wise weighting multipliers. These are extracted from `rake_original_input` by calling `survey::weights()`.
+We can create a new data frame `input_demo_wts` with case-wise demographic multipliers using `dplyr::bind_cols()`, which joins input columns side-by-side, without matching by an index term. We start with the input data set, which we pluck from the raked object `rake_original_input` by subsetting `[[]]` the element `"variables"`. To this we bind the `"prob"` element from `rake_original_input`, which we convert into a column by wrapping it in `base::data.frame()`. The `"prob"` column holds the sampling probabilities associated with the input demographic counts, which are not themselves weighting multipliers, but are an expression of the divergence between the input sample demographics and the census targets. Under-sampled categories have sampling probabilities less than 1, and over-sampled categories have a sampling probabilities greater than 1. Finally, we bind a new column `demo_wt` that holds the actual case-wise weighting multipliers. These are extracted from `rake_original_input` by calling `survey::weights()`.
 
 The remainder of this snippet restructures, relabels, and sorts this new data frame `input_demo_wts` containing the case-wise weighting multiplers, by applying `dplyr` functions as described previously. It then cleans up the environment by removing unneeded objects. Within `rm()`, the `pattern =` argument contains string elements separated by the logical _or_ operator `|`, so that objects whose names contain _any_ of these elements will be removed.
 ```{r weights, echo = 34:44, eval = F}
@@ -185,7 +185,7 @@ The remainder of this snippet restructures, relabels, and sorts this new data fr
 
 <br>
 
-#### Apply multipliers to input data, write files for downstream analysis
+#### C. Apply multipliers to input data, write files for downstream analysis
 
 This section creates separate output files for unweighted and weighted data.
 
@@ -247,10 +247,10 @@ We use `mutate()` and `base::rowSums()` to caculate a total score `TOT_raw_unwei
 We write the ouput to _.csv_ using `readr::write_csv()`, with the arugment `na = ""` indicating that any missing cells will be written as blanks.
 ```{r apply-weights, echo = 11:17, eval = F}
 ```
-We now create a weighted data set `weighted_output` and write it to _.csv_ for analysis. We use `dplyr::left_join()` to join the `original_input` data frame to the case-wise demographic multipliers. The latter are passed to `left_join()` by the argument `unweighted_output[c("ID", "demo_wt")]`, which uses single brackets `[]` to subset a vector of named columns from `unweighted_output`. We can use `by = "ID"` to designate a common indexing variable, thus ensuring proper alignment of the joined columns. We `rename_with()` the item columns using a function similar to that described previously, but this time appending `"_w"` to indicate that the item scores are weighted.
+We now create a weighted data set `weighted_output` and write it to _.csv_ for analysis. We use `dplyr::left_join()` to join the `original_input` data frame to the case-wise demographic multipliers. The latter are passed to `left_join()` by the argument `unweighted_output[c("ID", "demo_wt")]`, which uses single brackets `[]` to subset a vector of named columns from `unweighted_output`. The argument `by = "ID"` designates a common indexing variable, ensuring proper alignment of the joined columns. We `rename_with()` the item columns using a function similar to that described previously, but this time appending `"_w"` to indicate that the item scores are weighted.
 ```{r apply-weights, echo = 18:24, eval = F}
 ```
-We use two separate calls of `mutate()` to first apply weighting multipliers to the item scores, and then to calculate a weighted total raw score. Within `across()`, the target columns are specified `c(i01_w:i50_w)`, and a function `~` is applied, with the `.` shorthand indicating that the value of `demo_wt` is to be multiplied by the item score contained in each of the target columns. These weighted item scores are then processed by `rowSums()` to yield the total score `TOT_raw_weight`. Note the difference between how the same target columns are specified within `across()` and `rowSums()`. Because `across()` is a `tidyverse` function, it can use the transparent expression `i01_w:i50_w` to subset the columns, as opposed to `rowSums()`, which requires the `grep()` call described previously. In this instance, we append `$` to the regular expression, to indicate that the sought-after pattern must have no characters after `_w`. This properly excludes the column `demo_wt` from the calculation of `TOT_raw_weight`.
+We use two separate calls of `mutate()` to first apply weighting multipliers to the item scores, and then to calculate a weighted total raw score. Within `across()`, the target columns are specified `c(i01_w:i50_w)`, and a function `~` is applied, with the `.` shorthand indicating that the value of `demo_wt` is to be multiplied by the item score contained in each of the target columns. These weighted item scores are then processed by `rowSums()` to yield the total score `TOT_raw_weight`. Note the difference between how the same target columns are specified within `across()` and `rowSums()`. Because `across()` is a `tidyverse` function, it can use the transparent expression `i01_w:i50_w` to subset the columns, as opposed to `rowSums()`, which requires a variant of the `grep()` call described previously. In this instance, we append `$` to the regular expression, to indicate that the sought-after pattern must have no characters after `_w`. This properly excludes the column `demo_wt` from the calculation of `TOT_raw_weight`.
 ```{r apply-weights, echo = 25:30, eval = F}
 ```
 <br>
@@ -259,18 +259,7 @@ We use two separate calls of `mutate()` to first apply weighting multipliers to 
 
 Here we review the output of the demographic weighting method, to verify that the weighted item scores demonstrate expected properties.
 
-<!--First, we write a function for printing well-formatted summary tables, using the `huxtable` package.-->
-```{r hux-format, eval = T, echo = F}
-hux_format <- function(x) {
-  hux(x) %>%
-    set_number_format(everywhere, 1, NA)  %>%
-    set_bottom_border(brdr(1, "solid", "blue")) %>%
-    set_bottom_border(1, everywhere, brdr(2, "solid", "black")) %>%
-    set_bold(1, everywhere) %>%
-    set_background_color(evens, everywhere, "grey95")
-}
-```
-We create a comparison table <!--`cat_count_comp`--> with the column `pct_diff`, which expresses, for each demographic variable and category, the difference between the input sample percentage and the census target percentage.
+We create a comparison table with the column `pct_diff`, which expresses, for each demographic variable and category, the difference between the input sample percentage and the census target percentage.
 ```{r cat-count-comp, eval = T, echo = F}
 cat_count_comp <-
   var_order_census_match %>%
@@ -297,7 +286,7 @@ knitr::kable(cat_count_comp %>%
              caption = "Table 1: Comparison of input sample percentage to census target")
 ```
 
-Examining `pct_diff`, we can infer that the input sample percentage of cases in the `female X No_HS X hispanic X northeast` cell deviates further from its census target percentage than any other cell. In other words, it should be the most under-sampled cell. We therefore also expect its weighting multiplier to be much greater than 1. Because of the discrepancy between the sample percentage and the census target, the cases in `female X No_HS X hispanic X northeast` require a relatively large degree of numerical adjustment to their item scores.
+Examining `pct_diff`, we can infer that the input sample percentage of cases in the `female X No_HS X hispanic X northeast` cell deviates further from its census target percentage than any other cell. In other words, it is the most under-sampled cell. We therefore also expect its weighting multiplier to be much greater than 1. Because of the discrepancy between the sample percentage and the census target, the cases in `female X No_HS X hispanic X northeast` require a relatively large degree of numerical adjustment to their item scores.
 
 `Table 2` shows a single case from the `female X No_HS X hispanic X northeast` cell. The value of `demo_wt` is 7.37, meaning that all item scores of cases in this cell are multiplied by 7.37 to adjust for under-sampling relative to the census target.
 ```{r high-weight, eval = T, echo = F}
@@ -460,7 +449,7 @@ knitr::kable(TOT_sum_cat_count_comp %>%
 
 In each category, `n_diff` expresses the difference between the input sample size and the census target, and `sum_diff` captures the difference between the sum of total scores based on unweighted input data, and the sum based on weighted, census-adjusted item scores.
 
-We find the expected relationship between these two variables. In under-sampled categories (e.g., `educ = No_HS`), where `n_diff` is negative, we observe that `sum_diff` is also negative. In under-sampled categories, the weighted sum of total scores needs to be greater than the unweighted sum, to compensate for the reduced numerical impact of the unweighted scores from a fewer-than required number of cases. An analogous relationship is observed in over-sampled categories (e.g., `ethnic = white`).
+We find the expected relationship between these two variables. In under-sampled categories (e.g., `educ = No_HS`), where `n_diff` is negative, we observe that `sum_diff` is also negative. In under-sampled categories, the weighted sum of total scores needs to be greater than the unweighted sum, to compensate for the reduced numerical impact of the unweighted scores (which in turn results from a fewer-than required number of cases in that category). An analogous relationship is observed in over-sampled categories (e.g., `ethnic = white`).
 
 Across categories, we see that the absolute magnitude of `sum_diff` varies as expected with `n_diff`, such that categories with the greatest level of deviance from their census targets also have the greatest disparity between weighted and unweighted sums of total scores.
 
