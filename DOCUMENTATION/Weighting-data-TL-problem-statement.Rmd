@@ -45,8 +45,8 @@ suppressMessages(suppressWarnings(library(tidyverse)))
 suppressMessages(suppressWarnings(library(survey)))
 set.seed(123)
 
-urlRemote_path  <- "https://raw.githubusercontent.com/"
-github_path <- "DSHerzberg/WEIGHTING-DATA/master/INPUT-FILES/"
+urlRemote_path  <- "https://raw.github.com/"
+github_path <- "wpspublish/DSHerzberg-WEIGHTING-DATA/master/INPUT-FILES/"
 fileName_path   <- "unweighted-input.csv"
 
 unweighted_input <- suppressMessages(read_csv(url(

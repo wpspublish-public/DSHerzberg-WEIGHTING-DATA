@@ -16,8 +16,8 @@ cat_order <- c(
   NA, "hispanic", "asian", "black", "white", "other",
   NA, "northeast", "south", "midwest", "west")
 
-urlRemote_path  <- "https://raw.githubusercontent.com/"
-github_path <- "DSHerzberg/WEIGHTING-DATA/master/INPUT-FILES/"
+urlRemote_path  <- "https://raw.github.com/"
+github_path <- "wpspublish/DSHerzberg-WEIGHTING-DATA/master/INPUT-FILES/"
 fileName_path   <- "unweighted-input.csv"
 
 original_input <- suppressMessages(read_csv(url(

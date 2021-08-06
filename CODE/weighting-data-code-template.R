@@ -20,8 +20,9 @@ cat_order <- c(
   # Region
   NA, "northeast", "south", "midwest", "west")
 
-urlRemote_path  <- "https://raw.githubusercontent.com/"
-github_path <- "DSHerzberg/WEIGHTING-DATA/master/INPUT-FILES/"
+
+urlRemote_path  <- "https://raw.github.com/"
+github_path <- "wpspublish/DSHerzberg-WEIGHTING-DATA/master/INPUT-FILES/"
 fileName_path   <- "unweighted-input.csv"
 
 # read data-to-be-processed with non-census-matched demographics
