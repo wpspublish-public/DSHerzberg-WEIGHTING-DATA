@@ -230,6 +230,30 @@ write_csv(
   ),
   na = ""
 )
+
+demo_weight_by_crossing <- weighted_output %>%
+  group_by(demo_wt) %>%
+  summarize(
+    gender = first(gender),
+    educ = first(educ),
+    ethnic = first(ethnic),
+    region = first(region)
+  ) %>%
+  relocate(demo_wt, .after = region) %>%
+  arrange(
+    match(gender, cat_order),
+    match(educ, cat_order),
+    match(ethnic, cat_order),
+    match(region, cat_order)
+  )
+
+write_csv(
+  demo_weight_by_crossing,
+  here(
+    "OUTPUT-FILES/weights-per-demo-crossing.csv" 
+  ),
+  na = ""
+)
 ```
 
 <br>
@@ -252,6 +276,15 @@ We now create a weighted data set `weighted_output` and write it to _.csv_ for a
 ```
 We use two separate calls of `mutate()` to first apply weighting multipliers to the item scores, and then to calculate a weighted total raw score. Within `across()`, the target columns are specified `c(i01_w:i50_w)`, and a function `~` is applied, with the `.` shorthand indicating that the value of `demo_wt` is to be multiplied by the item score contained in each of the target columns. These weighted item scores are then processed by `rowSums()` to yield the total score `TOT_raw_weight`. Note the difference between how the same target columns are specified within `across()` and `rowSums()`. Because `across()` is a `tidyverse` function, it can use the transparent expression `i01_w:i50_w` to subset the columns, as opposed to `rowSums()`, which requires a variant of the `grep()` call described previously. In this instance, we append `$` to the regular expression, to indicate that the sought-after pattern must have no characters after `_w`. This properly excludes the column `demo_wt` from the calculation of `TOT_raw_weight`.
 ```{r apply-weights, echo = 25:30, eval = F}
+```
+Recall that each possible crossing of the four demographic variables is associated with a unique weighting multiplier. In the current input sample, multiplying out the categories of `gender`, `educ`, `ethnic`, and `region` yields 160 possible crossings. However, in this sample (as is often the case), a few of the possible crossings contain no cases. In calculating weighting multipliers, the current method omits empty crossings.
+
+We can create a lookup table `demo_weight_by_crossing` that provides the weighting multiplier for each crossing that contains cases in the input sample. We can use this table to apply weighting multipliers to any subset or alternate version of the input sample (as long as the file has columns for all four demographic variables, to allow correct alignment of rows with the lookup table).
+
+To build the lookup table, we first `group_by(demo_wt)`, and then use `summarize()` to collapse the table vertically, returning a single row for each unique value of `demo_wt`. By definition, each value of `demo_wt` is associated with only one value on each of the four demographic variables. We can extract these single values with the summary function `first()`, which in this instance returns the first of a series of identical values. `summarize()` recreates the four demographic columns, populated with the values associated with each value of `demo_wt`. We then `arrange()` the rows to `match()` the category order previously specified in the vector `cat_order`.
+
+Each row of the resulting lookup table contains the combination of demographic categories that defines a crossing (e.g., `female X high-school diploma X hispanic X south region`), followed by the demographic weighting multiplier associated with that crossing.
+```{r apply-weights, echo = 40:55, eval = F}
 ```
 <br>
 
