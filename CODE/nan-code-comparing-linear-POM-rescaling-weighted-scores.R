@@ -1,5 +1,8 @@
 ########################### DATA PREP SECTION ################################################################
-# read the TOD data from David's Github acount
+library(tidyverse)
+library(psych)
+
+# read the TOD data from David's Github account
 tod <- read.csv("https://raw.githubusercontent.com/wpspublish/DSHerzberg-TOD-R/master/INPUT-FILES/DATA-WEIGHTING/TODCgr1-12-unweighted.csv",header=TRUE)
 tod <- tod[,c(3:ncol(tod))]
 # remove the missing values
@@ -27,7 +30,7 @@ tod_complete$region <- ifelse(tod_complete$region == 1,"northeast",
 
 tod_complete$total <- apply(tod_complete[,c(7:ncol(tod_complete))], 1, sum)
 
-# creat census target values
+# create census target values
 census_values=list(Gender=list('male'=.48,'female'=.52), 
                    HighestEducation=list('no_HS'=.12, 'HS_grad'=.26, 'some_college'=.30, 'BA_plus' = .32),
                    Ethnicity=list('hispanic'=.24, 'asian'=.04, 'black'=.14, 'white'=.52,'other'=.06),
@@ -53,7 +56,7 @@ rake <- function(data, variable, census){
   design_matrices = list()
   for (m in variable){
     design_matrices[[m]] = as.data.frame(model.matrix(~.+0, data=data[,m,drop=FALSE]))
-    # the following codes tried to remove variable name from column name so only level names remain
+    # the following codes tries to remove variable name from column name so only level names remain
     colnames(design_matrices[[m]]) = substr(colnames(design_matrices[[m]]), nchar(m)+1,
                                             nchar(design_matrices[[m]]))
   } 
@@ -64,8 +67,8 @@ rake <- function(data, variable, census){
       level_weight = unlist(census[[j]][names(reordered_margins[[j]])])/
         (weighted_sum/nrow(inner_product))
       weight_output = rowSums(weights * mapply(`*`, design_matrices[[j]],level_weight))
-      threshod = median(weight_output) + 6*IQR(weight_output)
-      weight = pmin(weight_output, threshod)
+      threshold = median(weight_output) + 6*IQR(weight_output)
+      weight = pmin(weight_output, threshold)
       weight_final <- weight*length(weight)/sum(weight)
     }
   }
@@ -73,7 +76,7 @@ rake <- function(data, variable, census){
 }
 # apply the rake function on the tod data
 tod_weights = rake(tod_complete, c('Gender','HighestEducation','Ethnicity','region'), census_values)
-# calcuate the Weighted score for eahc subjects and attach the results(Weighted_total)to the original data.
+# calculate the Weighted score for each subjects and attach the results(Weighted_total)to the original data.
 tod_complete$Weighted_total<- tod_weights *tod_complete$total
 
 ########################### SCORE TRANSFORMATION SECTION ##############################################################
@@ -84,17 +87,38 @@ lm <- function(uwm,wm,uwsd,wsd,data){
   new = a*data + b
   return(new)
 }
-# attach the result (lms) to the origanl data
+
+######## is lm() supposed to transform the weighted score back to the scale of
+######## the original score? If so, it doesn't do that:
+# range tod_complete$total: 0-44
+# range tod_complete$lms: 11.50693-57.77477
+
+
+# attach the result (lms) to the original data
 tod_complete$lms <- lm(mean(tod_complete$total),mean(tod_complete$Weighted_total),
                        sd(tod_complete$total),sd(tod_complete$Weighted_total),
                        tod_complete$Weighted_total)
+# # function for POM method
+# pt <- function(wd,rd){
+#   a = wd/max(wd)
+#   new = a*rd
+#   return(new)
+# }
+
+##### Below is the corrected equation for calculating POM
+##### the correct workflow is as follows: 
+# 1. convert raw total to raw POM
+# 2. apply weigting to raw POM to yield weighted POM
+# 3. convert weighted POM to weighted raw total, by inverting POM calculation
+
 # function for POM method
 pt <- function(wd,rd){
   a = wd/max(wd)
-  new = a*rd
+  new = a*max(rd)
   return(new)
 }
-#attach the result (pom) to the origanl data
+
+#attach the result (pom) to the original data
 tod_complete$pom <- pt(tod_complete$Weighted_total,tod_complete$total)
 
 ######################### CREATE A GRAPH for SCORE COMPARISONS #####################################################
