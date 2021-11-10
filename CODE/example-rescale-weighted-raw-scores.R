@@ -17,7 +17,27 @@ input <- suppressMessages(read.csv(url(
   str_c(urlRemote_path, github_path, fileName_path)
 )))
 
-rescale <- input %>% 
+# Apply the rescaling transform to sege_sum_w. The expression below first
+# transforms sege_sum_w to a POM (proportion of maximum) with:
+#      sege_sum_w / max(sege_sum_w)
+# we then rescale the POM back the metric of sege_sum (original raw score distribution) with:
+#      * max(sege_sum)
+input <- input %>% 
   mutate(
-    sege_sum_w_rescale = 
+    sege_sum_w_rescale = round((sege_sum_w / max(sege_sum_w)) * max(sege_sum))
     )
+
+# sege_sum_w_rescale is a variable that can be an input to cNORM to generate appropriate
+# raw-to-standard score lookup tables.
+
+
+# As we discussed in the meeting, my goal is to determine whether this rescaling
+# transformation, using the POM method, does or does not distort the weighting
+# adjustment embodied in sege_sum_w. I recognize this is a conceptually
+# difficult question to answer, but I'm pushing up against the limits of my
+# knowledge and comfort zone here. So any insight, visualizations, analysis you
+# can provide on this question is appreciated. I'm not wedded to the POM
+# transformation, it's just what I've come up with at the moment. If you can
+# implement a linear transformation in a way that achieves the same goal, and
+# you can demonstrate that it preserves the distributional properties of
+# sege_sum_w better than the POM transformation, I'm happy to use your method.
